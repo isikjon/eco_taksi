@@ -1,0 +1,477 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
+import '../../styles/app_colors.dart';
+import '../../styles/app_text_styles.dart';
+import '../../styles/app_spacing.dart';
+import '../../services/auth_service.dart';
+import '../../services/api_service.dart';
+import '../../widgets/logo_widget.dart';
+import 'client_info_screen.dart';
+import '../main/simple_main_screen.dart';
+import 'phone_auth_screen.dart';
+
+class SmsVerificationScreen extends StatefulWidget {
+  final String phoneNumber;
+
+  const SmsVerificationScreen({
+    super.key,
+    required this.phoneNumber,
+  });
+
+  @override
+  State<SmsVerificationScreen> createState() => _SmsVerificationScreenState();
+}
+
+class _SmsVerificationScreenState extends State<SmsVerificationScreen> {
+  final List<TextEditingController> _controllers = List.generate(
+    4,
+    (index) => TextEditingController(),
+  );
+  final List<FocusNode> _focusNodes = List.generate(
+    4,
+    (index) => FocusNode(),
+  );
+  
+  Timer? _timer;
+  int _countdown = 37;
+  bool _canResend = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+    _sendSmsCode();
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _controllers) {
+      controller.dispose();
+    }
+    for (var focusNode in _focusNodes) {
+      focusNode.dispose();
+    }
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_countdown > 0) {
+        setState(() {
+          _countdown--;
+        });
+      } else {
+        setState(() {
+          _canResend = true;
+        });
+        timer.cancel();
+      }
+    });
+  }
+
+  void _onCodeChanged(int index, String value) {
+    setState(() {}); // Обновляем UI для кнопки "Продолжить"
+    
+    if (value.length == 1) {
+      if (index < 3) {
+        _focusNodes[index + 1].requestFocus();
+      } else {
+        _focusNodes[index].unfocus();
+      }
+    } else if (value.isEmpty && index > 0) {
+      _focusNodes[index - 1].requestFocus();
+    }
+  }
+
+  void _checkCode() async {
+    final code = _controllers.map((c) => c.text).join();
+    print('🔑 _checkCode called with code: $code');
+    if (code.length == 4) {
+      try {
+        final fullPhoneNumber = '+996${widget.phoneNumber}';
+        print('🔍 Checking user status with phone: $fullPhoneNumber, code: $code');
+        
+        // Сначала проверяем статус пользователя
+        final statusResponse = await AuthService.checkUserStatus(fullPhoneNumber, code);
+        print('🔍 Status check returned: $statusResponse');
+        
+        if (statusResponse['success'] && mounted) {
+          if (statusResponse['isNewUser']) {
+            // Новый пользователь - переходим на экран регистрации
+            print('🔑 New user - Navigating to ClientInfoScreen');
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (context) => ClientInfoScreen(
+                  phoneNumber: widget.phoneNumber,
+                  smsCode: code,
+                ),
+              ),
+              (route) => false,
+            );
+          } else {
+            // Существующий пользователь - сохраняем данные и переходим на главный экран
+            print('🔑 Existing user - Saving data and navigating to SimpleMainScreen');
+            final saveResponse = await AuthService.saveUserDataFromStatus(statusResponse);
+            
+            if (saveResponse['success'] && mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(
+                  builder: (context) => const SimpleMainScreen(),
+                ),
+                (route) => false,
+              );
+            } else if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(saveResponse['error'] ?? 'Ошибка сохранения данных'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        } else if (mounted) {
+          print('🔑 Status check failed: ${statusResponse['error']}');
+          // Проверяем специальные случаи блокировки и удаления
+          if (statusResponse['error'] == 'blocked' || statusResponse['error'] == 'deleted') {
+            _showBlockedDialog(statusResponse['message'] ?? 'Ваш аккаунт заблокирован. Для связи: +996 559 868 878');
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(statusResponse['error'] ?? 'Ошибка авторизации'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ошибка авторизации: $e'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Введите полный код'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  void _sendSmsCode() async {
+    try {
+      final fullPhoneNumber = '+996${widget.phoneNumber}';
+      final response = await ApiService.instance.sendSmsCode(fullPhoneNumber);
+      
+      if (!response['success'] && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['error'] ?? 'Ошибка отправки SMS'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка отправки SMS: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _resendCode() {
+    if (_canResend) {
+      setState(() {
+        _countdown = 37;
+        _canResend = false;
+      });
+      _startTimer();
+      _sendSmsCode();
+    }
+  }
+
+  void _showBlockedDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.block,
+                color: AppColors.error,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Доступ ограничен',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 16,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.phone,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '+996 559 868 878',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (context) => const PhoneAuthScreen(),
+                  ),
+                  (route) => false,
+                );
+              },
+              child: Text(
+                'Понятно',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _formatPhoneNumber(String phoneNumber) {
+    // Убираем все символы кроме цифр
+    final digits = phoneNumber.replaceAll(RegExp(r'[^\d]'), '');
+    
+    // Если номер начинается с 0, заменяем на +996
+    if (digits.startsWith('0') && digits.length == 10) {
+      final withoutZero = digits.substring(1);
+      return '+996 ${withoutZero.substring(0, 3)} ${withoutZero.substring(3, 6)} ${withoutZero.substring(6, 8)} ${withoutZero.substring(8)}';
+    }
+    
+    // Если номер уже в международном формате
+    if (digits.startsWith('996') && digits.length == 12) {
+      final withoutCountry = digits.substring(3);
+      return '+996 ${withoutCountry.substring(0, 3)} ${withoutCountry.substring(3, 6)} ${withoutCountry.substring(6, 8)} ${withoutCountry.substring(8)}';
+    }
+    
+    // Возвращаем как есть, если формат не распознан
+    return phoneNumber;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom - (AppSpacing.lg * 2),
+            ),
+            child: IntrinsicHeight(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: AppSpacing.xxl),
+                  _buildLogo(),
+                  const SizedBox(height: AppSpacing.xxl),
+                  _buildTitle(),
+                  const SizedBox(height: AppSpacing.xxl),
+                  _buildCodeInputs(),
+                  const SizedBox(height: AppSpacing.lg),
+                  _buildResendButton(),
+                  const SizedBox(height: AppSpacing.xl),
+                  _buildContinueButton(),
+                  const Spacer(),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogo() {
+    return const LogoWidget();
+  }
+
+  Widget _buildTitle() {
+    return Column(
+      children: [
+        Text(
+          'Введите код из смс. Мы отправили его',
+          style: AppTextStyles.h3.copyWith(
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          'на номер +996 ${_formatPhoneNumber(widget.phoneNumber)}',
+          style: AppTextStyles.h3.copyWith(
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCodeInputs() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: List.generate(4, (index) {
+        return SizedBox(
+          width: 50,
+          child: TextFormField(
+            controller: _controllers[index],
+            focusNode: _focusNodes[index],
+            textAlign: TextAlign.center,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(1),
+            ],
+            style: AppTextStyles.h2.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
+            decoration: InputDecoration(
+              border: UnderlineInputBorder(
+                borderSide: BorderSide(
+                  color: const Color(0xFFCECECE),
+                  width: 1,
+                ),
+              ),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(
+                  color: const Color(0xFFCECECE),
+                  width: 1,
+                ),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(
+                  color: const Color(0xFFCECECE).withOpacity(0.8),
+                  width: 1,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+            ),
+            onChanged: (value) => _onCodeChanged(index, value),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildResendButton() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onTap: _canResend ? _resendCode : null,
+        child: Text(
+          _canResend 
+              ? 'Отправить код повторно'
+              : 'Код не пришел (${_formatTime(_countdown)})',
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: _canResend ? AppColors.primary : AppColors.textSecondaryWithOpacity,
+            decoration: _canResend ? TextDecoration.underline : null,
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return '${minutes}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildContinueButton() {
+    final code = _controllers.map((c) => c.text).join();
+    final isCodeComplete = code.length == 4;
+    
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        onPressed: isCodeComplete ? _checkCode : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isCodeComplete ? AppColors.primary : AppColors.textSecondaryWithOpacity,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 0,
+        ),
+        child: Text(
+          'Продолжить',
+          style: AppTextStyles.button.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
