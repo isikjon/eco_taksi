@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import '../../styles/app_colors.dart';
 import '../../styles/app_spacing.dart';
 import '../../services/user_data_service.dart';
-import 'city_popup_screen.dart';
-import 'city_info_screen.dart';
 
 class CitySelectionScreen extends StatefulWidget {
   const CitySelectionScreen({super.key});
@@ -257,7 +255,7 @@ class _CitySelectionScreenState extends State<CitySelectionScreen>
   void _openCityPopup() async {
     final result = await Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const CityPopupScreen(),
+        pageBuilder: (context, animation, secondaryAnimation) => Container(),
         fullscreenDialog: true,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           const begin = Offset(0.0, 1.0);
@@ -288,7 +286,7 @@ class _CitySelectionScreenState extends State<CitySelectionScreen>
       // Navigate to city info screen
       Navigator.of(context).push(
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => CityInfoScreen(selectedCity: result),
+          pageBuilder: (context, animation, secondaryAnimation) => Container(),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             const begin = Offset(1.0, 0.0);
             const end = Offset.zero;

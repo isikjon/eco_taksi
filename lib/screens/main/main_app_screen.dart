@@ -574,7 +574,7 @@ class _HomeScreenState extends State<HomeScreen> {
               final result = await Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => PaymentMethodScreen(
-                    currentPaymentMethod: _selectedPaymentMethod == 'наличными' ? 'cash' : null,
+                    // currentPaymentMethod: _selectedPaymentMethod == 'наличными' ? 'cash' : null,
                   ),
                 ),
               );

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const Color primary = Color(0xFF264b47);
+  static const Color primary = Color(0xFF7EAB3A);
   static const Color primaryLight = Color(0xFF3a6b66);
   static const Color primaryDark = Color(0xFF1a322f);
   
@@ -14,7 +14,7 @@ class AppColors {
   static const Color error = Color(0xFFD32F2F);
   static const Color warning = Color(0xFFFF9800);
   static const Color success = Color(0xFF4CAF50);
-  
+
   static const Color textPrimary = Color(0xFF264b47);
   static const Color textSecondary = Color(0xFF9E9E9E);
   static const Color textHint = Color(0xFFBDBDBD);
@@ -25,7 +25,12 @@ class AppColors {
   static const Color online = Color(0xFF4CAF50);
   static const Color offline = Color(0xFF757575);
   static const Color busy = Color(0xFFFF9800);
-  
+
+  static const Color greenLight = Color(0xFF7EAB3A);
+  static const Color black = Color(0xFF3E4958);
+  static const Color grey = Color(0xFFD5DEE2);
+  static const Color greyDivider = Color(0xFFCECECE);
+
   // Предопределенные цвета с прозрачностью
   static const Color primaryWithOpacity30 = Color(0x4D264b47); // 30% прозрачности
   static const Color primaryWithOpacity20 = Color(0x33264b47); // 20% прозрачности

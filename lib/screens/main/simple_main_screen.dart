@@ -1,4 +1,16 @@
+import 'dart:async';
+
+import 'package:eco_taksi/config/dgis_sdk_config.dart';
+import 'package:dgis_mobile_sdk_full/dgis.dart' as sdk;
+import 'package:eco_taksi/screens/main/widgets/comment_for_driver_box.dart';
+import 'package:eco_taksi/screens/main/widgets/map_box.dart';
+import 'package:eco_taksi/screens/main/widgets/order_box.dart';
+import 'package:eco_taksi/screens/main/widgets/panel_box.dart';
+import 'package:eco_taksi/screens/main/widgets/payment_box.dart';
+import 'package:eco_taksi/screens/main/widgets/search_box_bottom.dart';
+import 'package:eco_taksi/screens/main/widgets/search_route_bottom.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../styles/app_colors.dart';
 import '../../styles/app_text_styles.dart';
 import '../../styles/app_spacing.dart';
@@ -10,6 +22,7 @@ import '../support/support_screen.dart';
 import '../info/info_screen.dart';
 import '../auth/phone_auth_screen.dart';
 import '../payment/payment_method_screen.dart';
+import 'widgets/order_another_human.dart';
 
 class SimpleMainScreen extends StatefulWidget {
   const SimpleMainScreen({super.key});
@@ -18,40 +31,88 @@ class SimpleMainScreen extends StatefulWidget {
   State<SimpleMainScreen> createState() => _SimpleMainScreenState();
 }
 
-class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProviderStateMixin {
+class _SimpleMainScreenState extends State<SimpleMainScreen>
+    with TickerProviderStateMixin {
   String _userName = 'Пользователь';
   late AnimationController _animationController;
   late Animation<double> _pulseAnimation;
-  
+  sdk.Map? _sdkMap;
+  sdk.LocationService? _locationService;
+  StreamSubscription<sdk.Location?>? locationSubscription;
+
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  final sdkContext = AppContainer().initializeSdk();
+  final _mapWidgetController = sdk.MapWidgetController();
+
   @override
   void initState() {
     super.initState();
     _loadUserName();
-    
+    _initSdkAndMap();
+
     // Инициализация анимации пульсации
     _animationController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-    
-    _pulseAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.2,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
-    
+
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
     // Запуск анимации
     _animationController.repeat(reverse: true);
   }
-  
+
+  Future<void> _initSdkAndMap() async {
+    final status = await Permission.locationWhenInUse.request();
+    if (!status.isGranted) {
+      print("Разрешение на геолокацию не предоставлено");
+      return;
+    }
+
+    final locationService = sdk.LocationService(sdkContext);
+
+    // Получаем карту асинхронно
+    _mapWidgetController.getMapAsync((m) async {
+      _sdkMap = m;
+
+      // Добавляем "синюю точку" на карту
+      final locationSource = sdk.MyLocationMapObjectSource(
+        sdkContext,
+        const sdk.MyLocationControllerSettings(
+          bearingSource: sdk.BearingSource.satellite,
+        ),
+      );
+      _sdkMap?.addSource(locationSource);
+
+      final loc = await locationService.lastLocation().firstWhere(
+        (l) => l != null,
+        orElse: () => null,
+      );
+
+      if (loc != null) {
+        final cameraPos = sdk.CameraPosition(
+          point: loc.coordinates.value,
+          zoom: const sdk.Zoom(15),
+        );
+        _sdkMap?.camera.moveToCameraPosition(
+          cameraPos,
+          const Duration(milliseconds: 500),
+          sdk.CameraAnimationType.linear,
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
     _animationController.dispose();
+    locationSubscription?.cancel();
     super.dispose();
   }
-  
+
   Future<void> _loadUserName() async {
     try {
       final clientData = await AuthService.getCurrentClient();
@@ -68,6 +129,29 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
     } catch (e) {
       print('Error loading user name: $e');
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: Colors.transparent,
+      drawer: _buildDrawer(),
+      body: sdk.MapWidget(
+        sdkContext: sdkContext,
+        mapOptions: sdk.MapOptions(),
+        controller: _mapWidgetController,
+        child: Stack(
+          children: [
+            // Верхняя панель с адресом и поиском
+            PanelBox(onTap: onShowSearchAddressBottom),
+            // _buildTopPanel(),
+            // Нижняя панель с часто посещаемыми адресами
+            // _buildBottomPanel(),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _handleLogout() async {
@@ -95,31 +179,27 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
+        builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
       try {
         // Выполняем выход
         await AuthService.logout();
-        
+
         // Закрываем диалог загрузки
         if (mounted) Navigator.of(context).pop();
-        
+
         // Перенаправляем на экран авторизации
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (context) => const PhoneAuthScreen(),
-            ),
+            MaterialPageRoute(builder: (context) => const PhoneAuthScreen()),
             (route) => false,
           );
         }
       } catch (e) {
         // Закрываем диалог загрузки
         if (mounted) Navigator.of(context).pop();
-        
+
         // Показываем ошибку
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -166,6 +246,7 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
         color: Colors.white,
         child: Column(
           children: [
+            const SizedBox(height: 20,),
             // Профиль пользователя
             Container(
               padding: const EdgeInsets.all(AppSpacing.lg),
@@ -198,9 +279,9 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
                 ],
               ),
             ),
-            
+
             const Divider(),
-            
+
             // Пункты меню
             Expanded(
               child: ListView(
@@ -215,18 +296,15 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
                 ],
               ),
             ),
-            
+
             const Divider(),
-            
+
             // Выход
             ListTile(
               leading: _buildAnimatedCircle(),
               title: const Text(
                 'Выйти',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 16,
-                ),
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 16),
               ),
               onTap: () {
                 Navigator.pop(context);
@@ -244,18 +322,17 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
       leading: _buildAnimatedCircle(),
       title: Text(
         title,
-        style: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 16,
-        ),
+        style: const TextStyle(color: AppColors.textPrimary, fontSize: 16),
       ),
       onTap: () {
         Navigator.pop(context);
-        
+
         if (title == 'Способ оплаты') {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const PaymentMethodScreen()),
+            MaterialPageRoute(
+              builder: (context) => const PaymentMethodScreen(),
+            ),
           );
         } else if (title == 'Настройки') {
           Navigator.push(
@@ -292,234 +369,109 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
     );
   }
 
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
+  void onShowSearchAddressBottom() {
+    // onSearchBottom();
+    _scaffoldKey.currentState?.showBottomSheet(
+      (context) {
+        return PopScope(
+          canPop: false,
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.3,
+            minChildSize: 0.3,
+            maxChildSize: 0.9,
+            shouldCloseOnMinExtent: false,
+            expand: false,
+            builder: (context, scrollController) {
+              return SearchRouteBottom(
+                controller: scrollController,
+                onTap: onSearchBottom,
+                onShowCommentBottom: onCommentForDiverBottom,
+                onShowOrderAnotherHumanBottom: onOrderAnotherHumanBottom,
+                onShowPaymentBottom: onOPaymentBoxBottom,
+                onShowOrderBoxBottom: onOrderBoxBottom,
+              );
+            },
+          ),
+        );
+      },
       backgroundColor: Colors.transparent,
-      drawer: _buildDrawer(),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Верхняя панель с адресом и поиском
-            _buildTopPanel(),
-            
-            // Карта (заглушка)
-            Expanded(
-              flex: 2,
-              child: _buildMapPlaceholder(),
-            ),
-            
-            // Нижняя панель с часто посещаемыми адресами
-            _buildBottomPanel(),
-          ],
-        ),
-      ),
+      showDragHandle: false,
+      enableDrag: false,
     );
   }
 
-  Widget _buildTopPanel() {
-    return Container(
-      color: const Color(0xFFF8F8F8),
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Меню и адрес
-          Row(
-            children: [
-              Builder(
-                builder: (context) => IconButton(
-                  icon: const Icon(Icons.menu),
-                  onPressed: () => Scaffold.of(context).openDrawer(),
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Ваш адрес',
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    Text(
-                      'Неизвестно',
-                      style: AppTextStyles.h3.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 48), // Для баланса с левой стороны
-            ],
-          ),
-          
-          const SizedBox(height: AppSpacing.md),
-          
-          // Поисковая строка
-          Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(AppSpacing.borderRadiusSmall),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: AppSpacing.md),
-                const Icon(
-                  Icons.search,
-                  color: AppColors.textSecondary,
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    'Куда едем?',
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: AppColors.textHint,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+  void onSearchBottom() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.9,
+          child: SearchBoxBottom(sdkContext: sdkContext),
+        );
+      },
     );
   }
 
-  Widget _buildMapPlaceholder() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F8F8),
-      ),
-      child: Stack(
-        children: [
-          // Заглушка карты
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.map,
-                  size: 64,
-                  color: AppColors.textSecondary,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                Text(
-                  'Карта будет скоро доступна',
-                  style: AppTextStyles.h4.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-          
-          // Кнопка геолокации (в левом нижнем углу карты)
-          Positioned(
-            bottom: AppSpacing.lg,
-            left: AppSpacing.lg,
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: IconButton(
-                icon: const Icon(
-                  Icons.my_location,
-                  color: AppColors.primary,
-                ),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Геолокация будет доступна с картой'),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
+  void onCommentForDiverBottom() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.9,
+          child: CommentForDriverBox(),
+        );
+      },
     );
   }
 
-  Widget _buildBottomPanel() {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.25,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Часто посещаемые адреса',
-              style: AppTextStyles.h4.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            
-            const SizedBox(height: AppSpacing.md),
-            
-            // Заглушка для адресов
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 40,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      'Сделайте свой первый заказ',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+  void onOrderAnotherHumanBottom() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.9,
+          child: OrderAnotherHuman(),
+        );
+      },
+    );
+  }
+
+  void onOPaymentBoxBottom() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.4,
+          child: PaymentBox(),
+        );
+      },
+    );
+  }
+
+  void onOrderBoxBottom() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.4,
+          child: OrderBox(),
+        );
+      },
     );
   }
 }

@@ -10,12 +10,7 @@ import 'screens/main/simple_main_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Скрываем статус бар
-  SystemChrome.setEnabledSystemUIMode(
-    SystemUiMode.immersiveSticky,
-    overlays: [],
-  );
+
   
   // 2GIS SDK временно отключен для уменьшения размера APK
   print('Запуск приложения без 2GIS SDK...');

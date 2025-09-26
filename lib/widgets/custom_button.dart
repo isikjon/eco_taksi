@@ -9,7 +9,7 @@ class CustomButton extends StatelessWidget {
   final bool isLoading;
   final bool isSecondary;
   final IconData? icon;
-  final double? width;
+  final double? width, height;
 
   const CustomButton({
     super.key,
@@ -19,11 +19,13 @@ class CustomButton extends StatelessWidget {
     this.isSecondary = false,
     this.icon,
     this.width,
+    this.height,
   });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
+      height: height,
       width: width ?? double.infinity,
       child: ElevatedButton(
         onPressed: isLoading ? null : onPressed,
@@ -55,6 +57,7 @@ class CustomButton extends StatelessWidget {
                   ],
                   Text(
                     text,
+                    textAlign: TextAlign.center,
                     style: AppTextStyles.button.copyWith(
                       color: isSecondary ? AppColors.primary : AppColors.surface,
                     ),

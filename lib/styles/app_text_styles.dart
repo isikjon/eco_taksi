@@ -6,37 +6,37 @@ class AppTextStyles {
   static TextStyle get h1 => GoogleFonts.montserrat(
     fontSize: 32,
     fontWeight: FontWeight.bold,
-    color: AppColors.textPrimary,
+    color: AppColors.black,
   );
   
   static TextStyle get h2 => GoogleFonts.montserrat(
     fontSize: 24,
     fontWeight: FontWeight.bold,
-    color: AppColors.textPrimary,
+    color: AppColors.black,
   );
   
   static TextStyle get h3 => GoogleFonts.montserrat(
     fontSize: 20,
     fontWeight: FontWeight.w600,
-    color: AppColors.textPrimary,
+    color: AppColors.black,
   );
   
   static TextStyle get h4 => GoogleFonts.montserrat(
     fontSize: 18,
     fontWeight: FontWeight.w600,
-    color: AppColors.textPrimary,
+    color: AppColors.black,
   );
   
   static TextStyle get bodyLarge => GoogleFonts.montserrat(
     fontSize: 16,
     fontWeight: FontWeight.normal,
-    color: AppColors.textPrimary,
+    color: AppColors.black,
   );
   
   static TextStyle get bodyMedium => GoogleFonts.montserrat(
     fontSize: 14,
     fontWeight: FontWeight.normal,
-    color: AppColors.textPrimary,
+    color: AppColors.black,
   );
   
   static TextStyle get bodySmall => GoogleFonts.montserrat(

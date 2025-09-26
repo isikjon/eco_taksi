@@ -1,3 +1,5 @@
+import 'package:flutter/cupertino.dart';
+
 class AppSpacing {
   static const double xs = 4.0;
   static const double sm = 8.0;
@@ -17,4 +19,9 @@ class AppSpacing {
   static const double elevation = 4.0;
   static const double elevationSmall = 2.0;
   static const double elevationLarge = 8.0;
+
+  static const all16 = EdgeInsets.all(16);
+  static const h16 = EdgeInsets.symmetric(horizontal: 16);
+  static const all12 = EdgeInsets.all(12);
+  static const r8 = EdgeInsets.only(right: 8);
 }
