@@ -460,18 +460,42 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
     );
   }
 
+  // void onOrderBoxBottom() {
+  //   showModalBottomSheet(
+  //     isScrollControlled: true,
+  //     useSafeArea: true,
+  //     context: context,
+  //     backgroundColor: Colors.transparent,
+  //     builder: (context) {
+  //       return FractionallySizedBox(
+  //         heightFactor: 0.4,
+  //         child: OrderBox(),
+  //       );
+  //     },
+  //   );
+  // }
+
   void onOrderBoxBottom() {
-    showModalBottomSheet(
-      isScrollControlled: true,
-      useSafeArea: true,
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return FractionallySizedBox(
-          heightFactor: 0.4,
-          child: OrderBox(),
+    // onSearchBottom();
+    _scaffoldKey.currentState?.showBottomSheet(
+          (context) {
+        return PopScope(
+          canPop: false,
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.3,
+            minChildSize: 0.3,
+            maxChildSize: 0.9,
+            shouldCloseOnMinExtent: false,
+            expand: false,
+            builder: (context, scrollController) {
+              return OrderBox();
+            },
+          ),
         );
       },
+      backgroundColor: Colors.transparent,
+      showDragHandle: false,
+      enableDrag: false,
     );
   }
 }

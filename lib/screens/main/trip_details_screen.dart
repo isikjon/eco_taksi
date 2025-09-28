@@ -1,3 +1,4 @@
+import 'package:eco_taksi/screens/main/additional_stop_screen.dart';
 import 'package:eco_taksi/styles/app_assets.dart';
 import 'package:eco_taksi/styles/app_border_radius.dart';
 import 'package:eco_taksi/styles/app_colors.dart';
@@ -76,7 +77,11 @@ class TripDetailsScreen extends StatelessWidget {
                   spacing: 8,
                   children: [
                     _buildBox(address: 'Садовая-Каретная ул., 20 стр. 3'),
-                    _buildBox(address: 'Садовая-Каретная ул., 20 стр. 3'),
+                    _buildBox(
+                      address: 'Садовая-Каретная ул., 20 стр. 3',
+                      isShowAdd: true,
+                      onTap: () => _goToPageAdditionalStop(context),
+                    ),
                   ],
                 ),
               ),
@@ -138,7 +143,7 @@ class TripDetailsScreen extends StatelessWidget {
     );
   }
 
-  _buildBox({String? address}) {
+  _buildBox({String? address, bool? isShowAdd, VoidCallback? onTap}) {
     return InkWell(
       child: Container(
         width: double.infinity,
@@ -154,8 +159,21 @@ class TripDetailsScreen extends StatelessWidget {
             ),
           ],
         ),
-        child: Text(address ?? '', style: AppTextStyles.bodyLarge),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(address ?? '', style: AppTextStyles.bodyLarge),
+            if (isShowAdd ?? false)
+              InkWell(onTap: onTap, child: Icon(Icons.add)),
+          ],
+        ),
       ),
     );
+  }
+
+  void _goToPageAdditionalStop(BuildContext context) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) {
+      return AdditionalStopScreen();
+    }));
   }
 }
