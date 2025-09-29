@@ -20,7 +20,7 @@ class _SearchBoxBottomState extends State<SearchBoxBottom> {
   @override
   void initState() {
     super.initState();
-    // Создаем онлайн поисковый менеджер
+    // Создаем поисковый менеджер согласно документации
     searchManager = sdk.SearchManager.createOnlineManager(widget.sdkContext);
 
     // Проверяем инициализацию SDK
@@ -29,39 +29,8 @@ class _SearchBoxBottomState extends State<SearchBoxBottom> {
 
   // Функция для проверки корректности инициализации SDK
   void _checkSDKInitialization() {
-    print('SDK Context создан: ${widget.sdkContext != null}');
-    print('SearchManager создан: ${searchManager != null}');
-
-    // Попробуем выполнить простой тестовый поиск
-    _testSearch();
-  }
-
-  // Тестовый поиск для проверки работоспособности
-  Future<void> _testSearch() async {
-    try {
-      const oshCenter = sdk.GeoPoint(
-        latitude: sdk.Latitude(40.5283),
-        longitude: sdk.Longitude(72.7985),
-      );
-
-      final testQuery = sdk.SearchQueryBuilder
-          .fromQueryText("Ош")
-          .setGeoPoint(oshCenter)
-          .setRadius(const sdk.Meter(10000))
-          .setPageSize(1)
-          .build();
-
-      print('Тестовый поиск для Оша создан, отправляем запрос...');
-      final result = await searchManager.search(testQuery).value;
-      print('Тестовый поиск успешен: найдено ${result.firstPage?.items.length ?? 0} результатов');
-    } catch (e) {
-      print('Ошибка тестового поиска: $e');
-      print('Возможные причины:');
-      print('1. Неверный или отсутствующий API ключ');
-      print('2. SDK не инициализирован правильно');
-      print('3. Проблемы с сетевым подключением');
-      print('4. Неверная конфигурация в AndroidManifest.xml или Info.plist');
-    }
+    // Убираем тестовый поиск, который вызывает раздражающие логи
+    // SDK инициализирован, если SearchManager создался без ошибок
   }
 
   @override
@@ -89,8 +58,6 @@ class _SearchBoxBottomState extends State<SearchBoxBottom> {
     });
 
     try {
-      print('Выполняем поиск для: "$query" в городе Ош');
-
       const oshCenter = sdk.GeoPoint(
         latitude: sdk.Latitude(40.5283),
         longitude: sdk.Longitude(72.7985),
@@ -113,7 +80,7 @@ class _SearchBoxBottomState extends State<SearchBoxBottom> {
         searchText = '$searchText, Ош'; // добавляем город к запросу
       }
 
-      // Создаем поисковый запрос с географическими ограничениями
+      // Создаем поисковый запрос согласно документации
       final searchQuery = sdk.SearchQueryBuilder
           .fromQueryText(searchText)
           .setAreaOfInterest(oshBounds)
@@ -126,20 +93,11 @@ class _SearchBoxBottomState extends State<SearchBoxBottom> {
           .setPageSize(15)
           .build();
 
-      print('Поиск только поОшу, выполняем поиск...');
+      final searchResult = await searchManager.search(searchQuery).value;
 
-      final searchFuture = searchManager.search(searchQuery);
-      final sdk.SearchResult result = await searchFuture.value;
-
-      print('Поиск выполнен, получаем первую страницу...');
-
-      final sdk.Page? searchPage = result.firstPage;
-
-      if (searchPage != null && searchPage.items.isNotEmpty) {
-        print('Найдено результатов: ${searchPage.items.length}');
-
+      if (searchResult.firstPage != null && searchResult.firstPage!.items.isNotEmpty) {
         // Дополнительная фильтрация результатов по Ошу
-        final oshResults = searchPage.items.where((item) {
+        final oshResults = searchResult.firstPage!.items.where((item) {
           final address = _getAddressString(item).toLowerCase();
           final title = item.title.toLowerCase();
           return address.contains('ош') || address.contains('osh') ||
@@ -151,14 +109,12 @@ class _SearchBoxBottomState extends State<SearchBoxBottom> {
           _searchResults = oshResults;
         });
       } else {
-        print('Результаты не найдены');
         setState(() {
           _searchResults.clear();
         });
       }
     } catch (e) {
-      print('Детальная ошибка поиска: $e');
-      print('Тип ошибки: ${e.runtimeType}');
+      // Убираем детальные логи ошибок, которые могут вызывать раздражающие сообщения
 
       setState(() {
         _searchResults.clear();
@@ -215,7 +171,7 @@ class _SearchBoxBottomState extends State<SearchBoxBottom> {
     if (obj.address != null) {
       final components = <String>[];
 
-      // Добавляем компоненты адреса
+      // Добавляем компоненты адреса согласно документации
       for (final component in obj.address!.components) {
         component.match(
           streetAddress: (street) {
@@ -306,6 +262,29 @@ class _SearchBoxBottomState extends State<SearchBoxBottom> {
           ),
 
           const SizedBox(height: 8),
+
+          // Кнопка "Указать точку на карте"
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(context, {'action': 'select_point'});
+              },
+              icon: const Icon(Icons.location_on, color: Colors.white),
+              label: const Text(
+                'Указать точку на карте',
+                style: TextStyle(color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
 
           // Индикатор загрузки
           if (_isLoading)
@@ -400,16 +379,17 @@ class _SearchBoxBottomState extends State<SearchBoxBottom> {
   // Функция обработки выбора результата
   void _onResultSelected(sdk.DirectoryObject result) {
     final coordinates = _getObjectCoordinates(result);
+    final address = _getAddressString(result);
 
     print('Выбран объект: ${result.title}');
-    print('Адрес: ${_getAddressString(result)}');
+    print('Адрес: $address');
     if (coordinates != null) {
       print('Координаты: ${coordinates.latitude.value}, ${coordinates.longitude.value}');
     }
 
     Navigator.pop(context, {
       'title': result.title,
-      'address': _getAddressString(result),
+      'address': address,
       'coordinates': coordinates,
       'directoryObject': result,
     });

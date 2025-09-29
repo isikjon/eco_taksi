@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:eco_taksi/styles/app_assets.dart';
 import 'package:eco_taksi/styles/app_border_radius.dart';
 import 'package:eco_taksi/styles/app_colors.dart';
 import 'package:eco_taksi/styles/app_spacing.dart';
 import 'package:eco_taksi/styles/app_text_styles.dart';
 import 'package:eco_taksi/widgets/custom_button.dart';
+import 'package:eco_taksi/services/location_service.dart';
+import 'package:eco_taksi/screens/main/widgets/search_box_bottom.dart';
+import 'package:dgis_mobile_sdk_full/dgis.dart' as sdk;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -16,6 +20,7 @@ class SearchRouteBottom extends StatefulWidget {
     required this.onShowPaymentBottom,
     required this.onShowOrderAnotherHumanBottom,
     required this.onShowOrderBoxBottom,
+    required this.sdkContext,
   });
 
   final ScrollController controller;
@@ -24,6 +29,7 @@ class SearchRouteBottom extends StatefulWidget {
   final VoidCallback onShowPaymentBottom;
   final VoidCallback onShowOrderAnotherHumanBottom;
   final VoidCallback onShowOrderBoxBottom;
+  final sdk.Context sdkContext;
 
   @override
   State<SearchRouteBottom> createState() => _SearchRouteBottomState();
@@ -31,8 +37,55 @@ class SearchRouteBottom extends StatefulWidget {
 
 class _SearchRouteBottomState extends State<SearchRouteBottom> {
   int? _currentIndex;
+  final LocationService _locationService = LocationService();
+  StreamSubscription<String>? _addressSubscription;
+  String _currentAddress = 'Ош';
+  String _destinationAddress = 'Введите точку отправления';
 
   void onSelectedTariff(int? index) => setState(() => _currentIndex = index);
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeLocation();
+  }
+
+  void _initializeLocation() {
+    _addressSubscription = _locationService.addressStream.listen((address) {
+      if (mounted) {
+        setState(() {
+          _currentAddress = address;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _addressSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _openSearchDialog() async {
+    final result = await showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.9,
+          child: SearchBoxBottom(sdkContext: widget.sdkContext),
+        );
+      },
+    );
+
+    if (result != null && result['address'] != null) {
+      setState(() {
+        _destinationAddress = result['address'];
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,8 +124,8 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
                   child: Column(
                     spacing: 8,
                     children: [
-                      _buildBox(address: 'Садовая-Каретная ул., 20 стр. 3'),
-                      _buildBox(address: 'Садовая-Каретная ул., 20 стр. 3'),
+                      _buildBox(address: _currentAddress),
+                      _buildBox(address: _destinationAddress, onTap: _openSearchDialog),
                     ],
                   ),
                 ),
@@ -158,7 +211,7 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
             ),
             SizedBox(height: 7),
             Text(
-              "$tariffPrice c" ?? '',
+              "$tariffPrice c",
               style: AppTextStyles.h3.copyWith(color: AppColors.black),
             ),
             SizedBox(height: 7),
@@ -173,7 +226,7 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
                 borderRadius: AppBorderRadius.all100,
               ),
               child: Text(
-                '$tariffTime мин' ?? '',
+                '$tariffTime мин',
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontWeight: FontWeight.bold,
                   color: AppColors.background,
@@ -186,9 +239,9 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
     );
   }
 
-  _buildBox({String? address}) {
+  _buildBox({String? address, VoidCallback? onTap}) {
     return InkWell(
-      onTap: widget.onTap,
+      onTap: onTap ?? widget.onTap,
       child: Container(
         width: double.infinity,
         padding: AppSpacing.all12.copyWith(),

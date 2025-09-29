@@ -76,9 +76,9 @@ class TripDetailsScreen extends StatelessWidget {
                 child: Column(
                   spacing: 8,
                   children: [
-                    _buildBox(address: 'Садовая-Каретная ул., 20 стр. 3'),
+                    _buildBox(address: 'Ош'),
                     _buildBox(
-                      address: 'Садовая-Каретная ул., 20 стр. 3',
+                      address: 'Введите точку отправления',
                       isShowAdd: true,
                       onTap: () => _goToPageAdditionalStop(context),
                     ),

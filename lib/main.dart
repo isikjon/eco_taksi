@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-// import 'package:dgis_mobile_sdk_full/dgis.dart' as sdk;  // Временно отключен
+import 'package:dgis_mobile_sdk_full/dgis.dart' as sdk;
 import 'services/auth_service.dart';
+import 'services/location_service.dart';
 import 'styles/app_theme.dart';
 import 'screens/auth/phone_auth_screen.dart';
 import 'screens/main/simple_main_screen.dart';
 
-// late sdk.Context sdkContext;  // Временно отключен
+late sdk.Context sdkContext;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  
-  // 2GIS SDK временно отключен для уменьшения размера APK
-  print('Запуск приложения без 2GIS SDK...');
+  try {
+    sdkContext = sdk.DGis.initialize();
+    await LocationService().initialize();
+  } catch (e) {
+    print('Ошибка инициализации: $e');
+  }
   
   runApp(const TaxiApp());
 }

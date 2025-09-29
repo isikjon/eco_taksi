@@ -1,12 +1,46 @@
+import 'dart:async';
 import 'package:eco_taksi/styles/app_colors.dart';
 import 'package:eco_taksi/styles/app_spacing.dart';
 import 'package:eco_taksi/styles/app_text_styles.dart';
+import 'package:eco_taksi/services/location_service.dart';
 import 'package:flutter/material.dart';
 
-class PanelBox extends StatelessWidget {
+class PanelBox extends StatefulWidget {
   const PanelBox({super.key, required this.onTap});
 
   final VoidCallback onTap;
+
+  @override
+  State<PanelBox> createState() => _PanelBoxState();
+}
+
+class _PanelBoxState extends State<PanelBox> {
+  final LocationService _locationService = LocationService();
+  StreamSubscription<String>? _addressSubscription;
+  String _currentAddress = 'Ош';
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeLocation();
+  }
+
+  void _initializeLocation() {
+    _locationService.initialize();
+    _addressSubscription = _locationService.addressStream.listen((address) {
+      if (mounted) {
+        setState(() {
+          _currentAddress = address;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _addressSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,12 +71,14 @@ class PanelBox extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'ffff',
+                    _currentAddress,
                     style: AppTextStyles.h3.copyWith(
                       fontWeight: FontWeight.bold,
                       color: AppColors.primaryDark,
                     ),
                     textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -51,7 +87,7 @@ class PanelBox extends StatelessWidget {
           ],
         ),
         InkWell(
-          onTap: onTap,
+          onTap: widget.onTap,
           child: Container(
             height: 48,
             margin: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
