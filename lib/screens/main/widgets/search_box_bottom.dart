@@ -20,7 +20,6 @@ class _SearchBoxBottomState extends State<SearchBoxBottom> {
   @override
   void initState() {
     super.initState();
-    // Создаем поисковый менеджер согласно документации
     searchManager = sdk.SearchManager.createOnlineManager(widget.sdkContext);
 
     // Проверяем инициализацию SDK

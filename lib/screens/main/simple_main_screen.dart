@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:eco_taksi/config/dgis_sdk_config.dart';
 import 'package:dgis_mobile_sdk_full/dgis.dart' as sdk;
@@ -152,19 +153,19 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
               // Верхняя панель с адресом и поиском (скрывается в режиме выбора точки)
               if (!_isSelectingPoint)
                 PanelBox(onTap: onShowSearchAddressBottom),
-              
-              
+
+
             // Панель выбора точки (показывается только в режиме выбора)
             if (_isSelectingPoint)
               _buildPointSelectionPanel(),
-            
+
             // Информация о маршруте (показывается после построения маршрута)
             if (_routeInfo.isNotEmpty && !_isSelectingPoint)
               _buildRouteInfoPanel(),
-              
-            // Маркер выбранной точки
-            if (_selectedPoint != null && _isSelectingPoint)
-              _buildSelectedPointMarker(),
+
+            // // Маркер выбранной точки
+            // if (_selectedPoint != null && _isSelectingPoint)
+            //   _buildSelectedPointMarker(),
             ],
           ),
         ),
@@ -673,41 +674,57 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
       // Строим маршрут от текущей позиции до выбранной точки
       await _buildRouteToSelectedPoint();
     }
-    
+
     _cancelPointSelection();
   }
 
-  void _onMapTap(TapDownDetails details) {
-    if (_isSelectingPoint) {
-      // Получаем координаты тапа
-      final RenderBox renderBox = context.findRenderObject() as RenderBox;
+  void _onMapTap(TapDownDetails details) async {
+    if (_isSelectingPoint && _sdkMap != null) {
+      final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+      if (renderBox == null) return;
+
       final localPosition = renderBox.globalToLocal(details.globalPosition);
-      
-      // Конвертируем координаты экрана в географические координаты
-      // Это упрощенная версия - в реальном приложении нужно использовать API карты
+
+      // Получаем текущую позицию камеры
+      final cameraPosition = _sdkMap!.camera.position;
+      final centerPoint = cameraPosition.point;
+      final zoom = cameraPosition.zoom.value;
+
+      // Размеры экрана
       final screenSize = MediaQuery.of(context).size;
-      final normalizedX = localPosition.dx / screenSize.width;
-      final normalizedY = localPosition.dy / screenSize.height;
-      
-      // Примерные координаты для Оша (нужно заменить на реальные)
-      const oshLat = 40.5283;
-      const oshLng = 72.7985;
-      const latRange = 0.1; // Примерный диапазон
-      const lngRange = 0.1;
-      
-      final lat = oshLat + (normalizedY - 0.5) * latRange;
-      final lng = oshLng + (normalizedX - 0.5) * lngRange;
-      
+      final screenCenterX = screenSize.width / 2;
+      final screenCenterY = screenSize.height / 2;
+
+      // Смещение от центра экрана в пикселях
+      final deltaX = localPosition.dx - screenCenterX;
+      final deltaY = localPosition.dy - screenCenterY;
+
+      // Конвертация пикселей в градусы (приближенная формула для Меркатора)
+      // Коэффициент зависит от zoom level
+      final metersPerPixel = 156543.03392 * cos(centerPoint.latitude.value * pi / 180) / pow(2, zoom);
+
+      // Конвертируем пиксели в метры, затем в градусы
+      final deltaLat = -(deltaY * metersPerPixel) / 111111; // 1 градус ≈ 111км
+      final deltaLng = (deltaX * metersPerPixel) / (111111 * cos(centerPoint.latitude.value * pi / 180));
+
+      final selectedLat = centerPoint.latitude.value + deltaLat;
+      final selectedLng = centerPoint.longitude.value + deltaLng;
+
       final newPoint = sdk.GeoPoint(
-        latitude: sdk.Latitude(lat),
-        longitude: sdk.Longitude(lng),
+        latitude: sdk.Latitude(selectedLat),
+        longitude: sdk.Longitude(selectedLng),
       );
-      
+
       setState(() {
         _selectedPoint = newPoint;
       });
+
+      print('Выбрана точка: $selectedLat, $selectedLng');
+      print('Центр камеры: ${centerPoint.latitude.value}, ${centerPoint.longitude.value}');
+      print('Zoom: $zoom');
     }
   }
+
 
   Future<void> _buildRouteToSelectedPoint() async {
     if (_selectedPoint == null || _sdkMap == null) return;
@@ -751,35 +768,36 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
 
       if (routes.isNotEmpty) {
         _currentRoute = routes.first;
-        
+
+        // Очищаем предыдущий маршрут если есть
+        if (_routeSource != null) {
+          _sdkMap!.removeSource(_routeSource!);
+        }
+
         // Создаем источник данных для маршрута
         _routeSource = sdk.RouteMapObjectSource(
           sdkContext,
           sdk.RouteVisualizationType.normal,
         );
-        
+
         // Добавляем источник на карту
         _sdkMap!.addSource(_routeSource!);
-        
+
         // Добавляем маршрут на карту
         _routeSource!.addObject(sdk.RouteMapObject(_currentRoute!, true, const sdk.RouteIndex(0)));
-        
+
         // Получаем информацию о маршруте
-        // TODO: Найти правильный API для получения расстояния и времени
-        // final distance = _currentRoute!.length.value;
-        // final duration = _currentRoute!.duration;
-        
-        _routeInfo = 'Маршрут построен'; // Временно упрощенная информация
-        
+        _routeInfo = 'Маршрут построен к точке ${_selectedPoint!.latitude.value.toStringAsFixed(4)}, ${_selectedPoint!.longitude.value.toStringAsFixed(4)}';
+
         // Показываем информацию о маршруте
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Маршрут построен: $_routeInfo'),
+            content: Text('Маршрут успешно построен'),
             backgroundColor: AppColors.primary,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 2),
           ),
         );
-        
+
         setState(() {});
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
