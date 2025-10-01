@@ -12,6 +12,7 @@ import 'package:eco_taksi/screens/main/widgets/search_route_bottom.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../services/location_service.dart';
 import '../../styles/app_colors.dart';
 import '../../styles/app_text_styles.dart';
 import '../../styles/app_spacing.dart';
@@ -32,29 +33,47 @@ class SimpleMainScreen extends StatefulWidget {
   State<SimpleMainScreen> createState() => _SimpleMainScreenState();
 }
 
-class _SimpleMainScreenState extends State<SimpleMainScreen>
-    with TickerProviderStateMixin {
+class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProviderStateMixin {
   String _userName = 'Пользователь';
   late AnimationController _animationController;
   late Animation<double> _pulseAnimation;
+  sdk.SearchManager? _searchManager;
+
   sdk.Map? _sdkMap;
   StreamSubscription<sdk.Location?>? locationSubscription;
   bool _isSelectingPoint = false;
-  sdk.GeoPoint? _selectedPoint;
+  sdk.GeoPoint? _selectedPointDestination;
+  sdk.GeoPoint? _selectedPointAddress;
   sdk.TrafficRoute? _currentRoute;
   sdk.RouteMapObjectSource? _routeSource;
   String _routeInfo = '';
 
+  String? _selectedAddress;
+  String? _destinationAddress;
+
+  String _routeDistance = '';
+  String _routeDuration = '';
+
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final LocationService _locationService = LocationService();
+  StreamSubscription<String>? _addressSubscription;
 
   final sdkContext = AppContainer().initializeSdk();
   final _mapWidgetController = sdk.MapWidgetController();
+
+  // Новая логика
+
+  bool _isonShowSearchAddressBottom = false;
 
   @override
   void initState() {
     super.initState();
     _loadUserName();
     _initSdkAndMap();
+    _initializeLocation();
+    _searchManager = sdk.SearchManager.createOnlineManager(sdkContext);
+
 
     // Инициализация анимации пульсации
     _animationController = AnimationController(
@@ -70,6 +89,17 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
     _animationController.repeat(reverse: true);
   }
 
+  void _initializeLocation() {
+    _locationService.initialize();
+    _addressSubscription = _locationService.addressStream.listen((address) {
+      if (mounted) {
+        setState(() {
+          _selectedAddress = address;
+        });
+      }
+    });
+  }
+
   Future<void> _initSdkAndMap() async {
     final status = await Permission.locationWhenInUse.request();
     if (!status.isGranted) {
@@ -78,6 +108,7 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
     }
 
     final locationService = sdk.LocationService(sdkContext);
+
 
     // Получаем карту асинхронно
     _mapWidgetController.getMapAsync((m) async {
@@ -136,6 +167,8 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
     }
   }
 
+  void onShowSearchAddressBottom() => setState(() => _isonShowSearchAddressBottom = !_isonShowSearchAddressBottom);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -143,7 +176,7 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
       backgroundColor: Colors.transparent,
       drawer: _buildDrawer(),
       body: GestureDetector(
-        onTapDown: _isSelectingPoint ? _onMapTap : null,
+        onTapDown:  _isSelectingPoint ? _onMapTap : null,
         child: sdk.MapWidget(
           sdkContext: sdkContext,
           mapOptions: sdk.MapOptions(),
@@ -163,15 +196,696 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
             if (_routeInfo.isNotEmpty && !_isSelectingPoint)
               _buildRouteInfoPanel(),
 
+            // sdk.DashboardWidget(
+            //   controller: sdk.DashboardController(navigationManager: sdk.NavigationManager(sdkContext), map: _sdkMap!),
+            // ),
+
             // // Маркер выбранной точки
             // if (_selectedPoint != null && _isSelectingPoint)
             //   _buildSelectedPointMarker(),
+
+              if(_isonShowSearchAddressBottom)...[
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: DraggableScrollableSheet(
+                    initialChildSize: 0.3,
+                    minChildSize: 0.3,
+                    maxChildSize: 0.9,
+                    shouldCloseOnMinExtent: false,
+                    expand: false,
+                    builder: (context, scrollController) {
+                      return SearchRouteBottom(
+                        routeDistance: _routeDistance,
+                        controller: scrollController,
+                        onTap: onSearchBottom,
+                        onTapDestinationAddress: onSearchBottom2,
+                        onShowCommentBottom: onCommentForDiverBottom,
+                        onShowOrderAnotherHumanBottom: onOrderAnotherHumanBottom,
+                        onShowPaymentBottom: onOPaymentBoxBottom,
+                        onShowOrderBoxBottom: onOrderBoxBottom,
+                        sdkContext: sdkContext,
+                        selectedAddress: _selectedAddress ?? 'Ош',
+                        destinationAddress: _destinationAddress ?? 'Выберите адрес',
+                      );
+                    },
+                  ),
+                ),
+              ]
+
             ],
           ),
         ),
       ),
     );
   }
+
+  // void onShowSearchAddressBottom() {
+  //   // onSearchBottom();
+  //   _scaffoldKey.currentState?.showBottomSheet(
+  //     (context) {
+  //       return PopScope(
+  //         canPop: false,
+  //         child: DraggableScrollableSheet(
+  //           initialChildSize: 0.3,
+  //           minChildSize: 0.3,
+  //           maxChildSize: 0.9,
+  //           shouldCloseOnMinExtent: false,
+  //           expand: false,
+  //           builder: (context, scrollController) {
+  //             return SearchRouteBottom(
+  //               controller: scrollController,
+  //               onTap: onSearchBottom,
+  //               onShowCommentBottom: onCommentForDiverBottom,
+  //               onShowOrderAnotherHumanBottom: onOrderAnotherHumanBottom,
+  //               onShowPaymentBottom: onOPaymentBoxBottom,
+  //               onShowOrderBoxBottom: onOrderBoxBottom,
+  //               sdkContext: sdkContext,
+  //               selectedAddress: _selectedAddress ?? 'Ош',
+  //             );
+  //           },
+  //         ),
+  //       );
+  //     },
+  //     backgroundColor: Colors.transparent,
+  //     showDragHandle: false,
+  //     enableDrag: false,
+  //   );
+  // }
+
+  void onSearchBottom() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.9,
+          child: SearchBoxBottom(isWherePoint: true),
+        );
+      },
+    ).then((result) {
+      print('RESULR: $result');
+      if (result != null && result['action'] == 'select_point') {
+        // Переключаемся в режим выбора точки
+        setState(() {
+          _isSelectingPoint = true;
+        });
+      }else if (result != null && result['where'] == true && result['coordinates'] != null) {
+        // Если выбрана точка из поиска, устанавливаем её как выбранную
+        setState(() {
+          _selectedAddress = result['title'];
+          _selectedPointAddress = result['coordinates'];
+          _isSelectingPoint = false;
+        });
+        print('_selectedAddress:$_selectedPointAddress');
+        // onShowSearchAddressBottom;
+
+        // Строим маршрут к выбранной точке
+       if(_selectedPointDestination != null) _buildRouteToSelectedPoint();
+      }
+    });
+  }
+
+  void onSearchBottom2() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.9,
+          child: SearchBoxBottom(isWherePoint: false),
+        );
+      },
+    ).then((result) {
+      print('RESULR: $result');
+      // Обрабатываем результат от SearchBoxBottom
+      if (result != null && result['action'] == 'select_point') {
+        // Переключаемся в режим выбора точки
+        setState(() {
+          _isSelectingPoint = true;
+        });
+      } else if(result != null && result['where'] == false && result['coordinates'] != null) {
+        setState(() {
+          _destinationAddress = result['title'];
+          _selectedPointDestination = result['coordinates'];
+          _isSelectingPoint = false;
+        });
+        _buildRouteToSelectedPoint();
+      }
+    });
+  }
+
+  void onCommentForDiverBottom() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.9,
+          child: CommentForDriverBox(),
+        );
+      },
+    );
+  }
+
+  void onOrderAnotherHumanBottom() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.9,
+          child: OrderAnotherHuman(),
+        );
+      },
+    );
+  }
+
+  void onOPaymentBoxBottom() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.4,
+          child: PaymentBox(),
+        );
+      },
+    );
+  }
+
+  // void onOrderBoxBottom() {
+  //   showModalBottomSheet(
+  //     isScrollControlled: true,
+  //     useSafeArea: true,
+  //     context: context,
+  //     backgroundColor: Colors.transparent,
+  //     builder: (context) {
+  //       return FractionallySizedBox(
+  //         heightFactor: 0.4,
+  //         child: OrderBox(),
+  //       );
+  //     },
+  //   );
+  // }
+
+  void onOrderBoxBottom() {
+    // onSearchBottom();
+    _scaffoldKey.currentState?.showBottomSheet(
+          (context) {
+        return PopScope(
+          canPop: false,
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.4,
+            minChildSize: 0.3,
+            maxChildSize: 0.9,
+            shouldCloseOnMinExtent: false,
+            expand: false,
+            builder: (context, scrollController) {
+              return OrderBox();
+            },
+          ),
+        );
+      },
+      backgroundColor: Colors.transparent,
+      showDragHandle: false,
+    );
+  }
+
+
+  Widget _buildPointSelectionPanel() {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.touch_app,
+                  color: AppColors.primary,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Нажмите на карту, чтобы выбрать точку',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _cancelPointSelection,
+                  icon: const Icon(Icons.close),
+                  color: AppColors.textSecondary,
+                ),
+              ],
+            ),
+            if (_selectedPointDestination != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Выбранная точка: $_destinationAddress',
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _confirmPointSelection,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: Text(
+                        'Подтвердить',
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _cancelPointSelection,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.textSecondary,
+                        side: BorderSide(color: AppColors.textSecondary),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: Text(
+                        'Отмена',
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  void _cancelPointSelection() {
+    setState(() {
+      _isSelectingPoint = false;
+      _selectedPointDestination = null;
+    });
+  }
+
+  void _confirmPointSelection() async {
+    if (_selectedPointDestination != null) {
+      // Строим маршрут от текущей позиции до выбранной точки
+      await _buildRouteToSelectedPoint();
+    }
+
+    _cancelPointSelection();
+  }
+
+  void _onMapTap(TapDownDetails details) async {
+    if (_isSelectingPoint && _sdkMap != null) {
+      final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+      if (renderBox == null) return;
+
+      final localPosition = renderBox.globalToLocal(details.globalPosition);
+
+      // Получаем текущую позицию камеры
+      final cameraPosition = _sdkMap!.camera.position;
+      final centerPoint = cameraPosition.point;
+      final zoom = cameraPosition.zoom.value;
+
+      // Размеры экрана
+      final screenSize = MediaQuery.of(context).size;
+      final screenCenterX = screenSize.width / 2;
+      final screenCenterY = screenSize.height / 2;
+
+      // Смещение от центра экрана в пикселях
+      final deltaX = localPosition.dx - screenCenterX;
+      final deltaY = localPosition.dy - screenCenterY;
+
+      // Конвертация пикселей в градусы (приближенная формула для Меркатора)
+      // Коэффициент зависит от zoom level
+      final metersPerPixel = 156543.03392 * cos(centerPoint.latitude.value * pi / 180) / pow(2, zoom);
+
+      // Конвертируем пиксели в метры, затем в градусы
+      final deltaLat = -(deltaY * metersPerPixel) / 111111; // 1 градус ≈ 111км
+      final deltaLng = (deltaX * metersPerPixel) / (111111 * cos(centerPoint.latitude.value * pi / 180));
+
+      final selectedLat = centerPoint.latitude.value + deltaLat;
+      final selectedLng = centerPoint.longitude.value + deltaLng;
+
+      final newPoint = sdk.GeoPoint(
+        latitude: sdk.Latitude(selectedLat),
+        longitude: sdk.Longitude(selectedLng),
+      );
+
+      final address = await _getAddressFromCoordinates(newPoint);
+
+
+      setState(() {
+        _selectedPointDestination = newPoint;
+        _destinationAddress = address ?? 'Адрес не найден';
+      });
+
+      print('Выбрана точка: $selectedLat, $selectedLng');
+      print('Центр камеры: ${centerPoint.latitude.value}, ${centerPoint.longitude.value}');
+      print('Zoom: $zoom');
+    }
+  }
+
+  Future<String?> _getAddressFromCoordinates(sdk.GeoPoint point) async {
+    try {
+      // Создаем поисковый запрос по координатам
+      final searchQuery = sdk.SearchQueryBuilder
+          .fromGeoPoint(point)
+          .build();
+
+      // Выполняем поиск
+      final sdk.SearchResult result = await _searchManager!.search(searchQuery).value;
+
+      if (result.firstPage != null && result.firstPage!.items.isNotEmpty) {
+        final obj = result.firstPage!.items.first;
+
+        // Используем существующий метод для форматирования адреса
+        return obj.title ?? '';
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('Ошибка обратного геокодирования: $e');
+      return null;
+    }
+  }
+
+
+  Future<void> _buildRouteToSelectedPoint() async {
+    if (_selectedPointDestination == null || _sdkMap == null) return;
+
+    try {
+      // Получаем текущую позицию пользователя
+      final currentLocation =  await _getCurrentLocation();
+      if (currentLocation == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Не удалось определить текущее местоположение'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+
+      final currentLocal = sdk.GeoPoint(
+        latitude: sdk.Latitude(currentLocation.latitude),
+        longitude: sdk.Longitude(currentLocation.longitude),
+      );
+
+      setState(() {
+        _selectedPointAddress = currentLocal;
+      });
+
+
+      // Создаем точки маршрута
+      final startPoint = _selectedPointAddress != null ? sdk.RouteSearchPoint(coordinates: _selectedPointAddress!) : sdk.RouteSearchPoint(
+        coordinates: currentLocal,
+      );
+
+      final finishPoint = sdk.RouteSearchPoint(
+        coordinates: _selectedPointDestination!,
+      );
+
+      // Настройки маршрута для автомобиля
+      final routeSearchOptions = sdk.RouteSearchOptions.car(
+        sdk.CarRouteSearchOptions(),
+      );
+
+      // Создаем TrafficRouter
+      final trafficRouter = sdk.TrafficRouter(sdkContext);
+
+      // Ищем маршрут
+      final routesFuture = trafficRouter.findRoute(startPoint, finishPoint, routeSearchOptions);
+      final routes = await routesFuture.value;
+
+      if (routes.isNotEmpty) {
+        _currentRoute = routes.first;
+
+        // Очищаем предыдущий маршрут если есть
+        if (_routeSource != null) {
+          _sdkMap!.removeSource(_routeSource!);
+        }
+
+        if (_selectedPointDestination != null) {
+          final distance = calculateDistanceKm(
+            _selectedPointAddress!.latitude.value,
+            _selectedPointAddress!.longitude.value,
+            _selectedPointDestination!.latitude.value,
+            _selectedPointDestination!.longitude.value,
+          );
+
+          setState(() {
+            _routeDistance = distance.toStringAsFixed(2);
+          });
+
+          print('Расстояние: ${distance.toStringAsFixed(2)} км');
+        }
+
+        // Создаем источник данных для маршрута
+        _routeSource = sdk.RouteMapObjectSource(
+          sdkContext,
+          sdk.RouteVisualizationType.normal,
+        );
+
+        // Добавляем источник на карту
+        _sdkMap!.addSource(_routeSource!);
+
+        // Добавляем маршрут на карту
+        _routeSource!.addObject(sdk.RouteMapObject(_currentRoute!, true, const sdk.RouteIndex(0)));
+
+        // Получаем информацию о маршруте
+        _routeInfo = 'Маршрут построен к точке ${_selectedPointDestination!.latitude.value.toStringAsFixed(4)}, ${_selectedPointDestination!.longitude.value.toStringAsFixed(4)}';
+
+        // Показываем информацию о маршруте
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Маршрут успешно построен'),
+            backgroundColor: AppColors.primary,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Не удалось построить маршрут'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Ошибка построения маршрута: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка построения маршрута: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  double calculateDistanceKm(double lat1, double lon1, double lat2, double lon2) {
+    const R = 6371; // радиус Земли в километрах
+    final dLat = _degToRad(lat2 - lat1);
+    final dLon = _degToRad(lon2 - lon1);
+
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_degToRad(lat1)) * cos(_degToRad(lat2)) *
+            sin(dLon / 2) * sin(dLon / 2);
+
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return R * c; // результат сразу в км
+  }
+
+  double _degToRad(double deg) => deg * pi / 180;
+
+  Future<Position?> _getCurrentLocation() async {
+    try {
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+      );
+    } catch (e) {
+      print('Ошибка получения местоположения: $e');
+      return null;
+    }
+  }
+
+
+  Widget _buildRouteInfoPanel() {
+    return Positioned(
+      bottom: 100,
+      left: 16,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.route,
+                color: AppColors.primary,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Маршрут построен',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _routeInfo,
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: _clearRoute,
+              icon: const Icon(Icons.close),
+              color: AppColors.textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildSelectedPointMarker() {
+    return Positioned(
+      top: MediaQuery.of(context).size.height * 0.5 - 20,
+      left: MediaQuery.of(context).size.width * 0.5 - 20,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.blue,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 3),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.location_on,
+          color: Colors.white,
+          size: 24,
+        ),
+      ),
+    );
+  }
+
+  void _clearRoute() {
+    if (_routeSource != null && _sdkMap != null) {
+      _sdkMap!.removeSource(_routeSource!);
+    }
+    setState(() {
+      _currentRoute = null;
+      _routeSource = null;
+      _routeInfo = '';
+    });
+  }
+
 
   Future<void> _handleLogout() async {
     // Показываем диалог подтверждения
@@ -212,7 +926,7 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const PhoneAuthScreen()),
-            (route) => false,
+                (route) => false,
           );
         }
       } catch (e) {
@@ -386,553 +1100,6 @@ class _SimpleMainScreenState extends State<SimpleMainScreen>
         }
       },
     );
-  }
-
-  void onShowSearchAddressBottom() {
-    // onSearchBottom();
-    _scaffoldKey.currentState?.showBottomSheet(
-      (context) {
-        return PopScope(
-          canPop: false,
-          child: DraggableScrollableSheet(
-            initialChildSize: 0.3,
-            minChildSize: 0.3,
-            maxChildSize: 0.9,
-            shouldCloseOnMinExtent: false,
-            expand: false,
-            builder: (context, scrollController) {
-              return SearchRouteBottom(
-                controller: scrollController,
-                onTap: onSearchBottom,
-                onShowCommentBottom: onCommentForDiverBottom,
-                onShowOrderAnotherHumanBottom: onOrderAnotherHumanBottom,
-                onShowPaymentBottom: onOPaymentBoxBottom,
-                onShowOrderBoxBottom: onOrderBoxBottom,
-                sdkContext: sdkContext,
-              );
-            },
-          ),
-        );
-      },
-      backgroundColor: Colors.transparent,
-      showDragHandle: false,
-      enableDrag: false,
-    );
-  }
-
-  void onSearchBottom() {
-    showModalBottomSheet(
-      isScrollControlled: true,
-      useSafeArea: true,
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return FractionallySizedBox(
-          heightFactor: 0.9,
-          child: SearchBoxBottom(sdkContext: sdkContext),
-        );
-      },
-    ).then((result) {
-      // Обрабатываем результат от SearchBoxBottom
-      if (result != null && result['action'] == 'select_point') {
-        // Переключаемся в режим выбора точки
-        setState(() {
-          _isSelectingPoint = true;
-        });
-      } else if (result != null && result['coordinates'] != null) {
-        // Если выбрана точка из поиска, устанавливаем её как выбранную
-        setState(() {
-          _selectedPoint = result['coordinates'];
-          _isSelectingPoint = false;
-        });
-        // Строим маршрут к выбранной точке
-        _buildRouteToSelectedPoint();
-      }
-    });
-  }
-
-  void onCommentForDiverBottom() {
-    showModalBottomSheet(
-      isScrollControlled: true,
-      useSafeArea: true,
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return FractionallySizedBox(
-          heightFactor: 0.9,
-          child: CommentForDriverBox(),
-        );
-      },
-    );
-  }
-
-  void onOrderAnotherHumanBottom() {
-    showModalBottomSheet(
-      isScrollControlled: true,
-      useSafeArea: true,
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return FractionallySizedBox(
-          heightFactor: 0.9,
-          child: OrderAnotherHuman(),
-        );
-      },
-    );
-  }
-
-  void onOPaymentBoxBottom() {
-    showModalBottomSheet(
-      isScrollControlled: true,
-      useSafeArea: true,
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return FractionallySizedBox(
-          heightFactor: 0.4,
-          child: PaymentBox(),
-        );
-      },
-    );
-  }
-
-  // void onOrderBoxBottom() {
-  //   showModalBottomSheet(
-  //     isScrollControlled: true,
-  //     useSafeArea: true,
-  //     context: context,
-  //     backgroundColor: Colors.transparent,
-  //     builder: (context) {
-  //       return FractionallySizedBox(
-  //         heightFactor: 0.4,
-  //         child: OrderBox(),
-  //       );
-  //     },
-  //   );
-  // }
-
-  void onOrderBoxBottom() {
-    // onSearchBottom();
-    _scaffoldKey.currentState?.showBottomSheet(
-          (context) {
-        return PopScope(
-          canPop: false,
-          child: DraggableScrollableSheet(
-            initialChildSize: 0.3,
-            minChildSize: 0.3,
-            maxChildSize: 0.9,
-            shouldCloseOnMinExtent: false,
-            expand: false,
-            builder: (context, scrollController) {
-              return OrderBox();
-            },
-          ),
-        );
-      },
-      backgroundColor: Colors.transparent,
-      showDragHandle: false,
-      enableDrag: false,
-    );
-  }
-
-
-  Widget _buildPointSelectionPanel() {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.touch_app,
-                  color: AppColors.primary,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Нажмите на карту, чтобы выбрать точку',
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: _cancelPointSelection,
-                  icon: const Icon(Icons.close),
-                  color: AppColors.textSecondary,
-                ),
-              ],
-            ),
-            if (_selectedPoint != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.location_on,
-                      color: AppColors.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Выбранная точка: ${_selectedPoint!.latitude.value.toStringAsFixed(6)}, ${_selectedPoint!.longitude.value.toStringAsFixed(6)}',
-                        style: AppTextStyles.bodySmall.copyWith(
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _confirmPointSelection,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: Text(
-                        'Подтвердить',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _cancelPointSelection,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textSecondary,
-                        side: BorderSide(color: AppColors.textSecondary),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: Text(
-                        'Отмена',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-
-  void _cancelPointSelection() {
-    setState(() {
-      _isSelectingPoint = false;
-      _selectedPoint = null;
-    });
-  }
-
-  void _confirmPointSelection() async {
-    if (_selectedPoint != null) {
-      // Строим маршрут от текущей позиции до выбранной точки
-      await _buildRouteToSelectedPoint();
-    }
-
-    _cancelPointSelection();
-  }
-
-  void _onMapTap(TapDownDetails details) async {
-    if (_isSelectingPoint && _sdkMap != null) {
-      final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-      if (renderBox == null) return;
-
-      final localPosition = renderBox.globalToLocal(details.globalPosition);
-
-      // Получаем текущую позицию камеры
-      final cameraPosition = _sdkMap!.camera.position;
-      final centerPoint = cameraPosition.point;
-      final zoom = cameraPosition.zoom.value;
-
-      // Размеры экрана
-      final screenSize = MediaQuery.of(context).size;
-      final screenCenterX = screenSize.width / 2;
-      final screenCenterY = screenSize.height / 2;
-
-      // Смещение от центра экрана в пикселях
-      final deltaX = localPosition.dx - screenCenterX;
-      final deltaY = localPosition.dy - screenCenterY;
-
-      // Конвертация пикселей в градусы (приближенная формула для Меркатора)
-      // Коэффициент зависит от zoom level
-      final metersPerPixel = 156543.03392 * cos(centerPoint.latitude.value * pi / 180) / pow(2, zoom);
-
-      // Конвертируем пиксели в метры, затем в градусы
-      final deltaLat = -(deltaY * metersPerPixel) / 111111; // 1 градус ≈ 111км
-      final deltaLng = (deltaX * metersPerPixel) / (111111 * cos(centerPoint.latitude.value * pi / 180));
-
-      final selectedLat = centerPoint.latitude.value + deltaLat;
-      final selectedLng = centerPoint.longitude.value + deltaLng;
-
-      final newPoint = sdk.GeoPoint(
-        latitude: sdk.Latitude(selectedLat),
-        longitude: sdk.Longitude(selectedLng),
-      );
-
-      setState(() {
-        _selectedPoint = newPoint;
-      });
-
-      print('Выбрана точка: $selectedLat, $selectedLng');
-      print('Центр камеры: ${centerPoint.latitude.value}, ${centerPoint.longitude.value}');
-      print('Zoom: $zoom');
-    }
-  }
-
-
-  Future<void> _buildRouteToSelectedPoint() async {
-    if (_selectedPoint == null || _sdkMap == null) return;
-
-    try {
-      // Получаем текущую позицию пользователя
-      final currentLocation = await _getCurrentLocation();
-      if (currentLocation == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Не удалось определить текущее местоположение'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      // Создаем точки маршрута
-      final startPoint = sdk.RouteSearchPoint(
-        coordinates: sdk.GeoPoint(
-          latitude: sdk.Latitude(currentLocation.latitude),
-          longitude: sdk.Longitude(currentLocation.longitude),
-        ),
-      );
-
-      final finishPoint = sdk.RouteSearchPoint(
-        coordinates: _selectedPoint!,
-      );
-
-      // Настройки маршрута для автомобиля
-      final routeSearchOptions = sdk.RouteSearchOptions.car(
-        sdk.CarRouteSearchOptions(),
-      );
-
-      // Создаем TrafficRouter
-      final trafficRouter = sdk.TrafficRouter(sdkContext);
-
-      // Ищем маршрут
-      final routesFuture = trafficRouter.findRoute(startPoint, finishPoint, routeSearchOptions);
-      final routes = await routesFuture.value;
-
-      if (routes.isNotEmpty) {
-        _currentRoute = routes.first;
-
-        // Очищаем предыдущий маршрут если есть
-        if (_routeSource != null) {
-          _sdkMap!.removeSource(_routeSource!);
-        }
-
-        // Создаем источник данных для маршрута
-        _routeSource = sdk.RouteMapObjectSource(
-          sdkContext,
-          sdk.RouteVisualizationType.normal,
-        );
-
-        // Добавляем источник на карту
-        _sdkMap!.addSource(_routeSource!);
-
-        // Добавляем маршрут на карту
-        _routeSource!.addObject(sdk.RouteMapObject(_currentRoute!, true, const sdk.RouteIndex(0)));
-
-        // Получаем информацию о маршруте
-        _routeInfo = 'Маршрут построен к точке ${_selectedPoint!.latitude.value.toStringAsFixed(4)}, ${_selectedPoint!.longitude.value.toStringAsFixed(4)}';
-
-        // Показываем информацию о маршруте
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Маршрут успешно построен'),
-            backgroundColor: AppColors.primary,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-
-        setState(() {});
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Не удалось построить маршрут'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      print('Ошибка построения маршрута: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Ошибка построения маршрута: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<Position?> _getCurrentLocation() async {
-    try {
-      return await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-      );
-    } catch (e) {
-      print('Ошибка получения местоположения: $e');
-      return null;
-    }
-  }
-
-
-  Widget _buildRouteInfoPanel() {
-    return Positioned(
-      bottom: 100,
-      left: 16,
-      right: 16,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.route,
-                color: AppColors.primary,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Маршрут построен',
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _routeInfo,
-                    style: AppTextStyles.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              onPressed: _clearRoute,
-              icon: const Icon(Icons.close),
-              color: AppColors.textSecondary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-
-  Widget _buildSelectedPointMarker() {
-    return Positioned(
-      top: MediaQuery.of(context).size.height * 0.5 - 20,
-      left: MediaQuery.of(context).size.width * 0.5 - 20,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: Colors.blue,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.location_on,
-          color: Colors.white,
-          size: 24,
-        ),
-      ),
-    );
-  }
-
-  void _clearRoute() {
-    if (_routeSource != null && _sdkMap != null) {
-      _sdkMap!.removeSource(_routeSource!);
-    }
-    setState(() {
-      _currentRoute = null;
-      _routeSource = null;
-      _routeInfo = '';
-    });
   }
 
 }

@@ -21,15 +21,23 @@ class SearchRouteBottom extends StatefulWidget {
     required this.onShowOrderAnotherHumanBottom,
     required this.onShowOrderBoxBottom,
     required this.sdkContext,
+    required this.selectedAddress,
+    required this.onTapDestinationAddress,
+    required this.destinationAddress,
+    this.routeDistance,
   });
 
   final ScrollController controller;
   final VoidCallback onTap;
+  final VoidCallback onTapDestinationAddress;
   final VoidCallback onShowCommentBottom;
   final VoidCallback onShowPaymentBottom;
   final VoidCallback onShowOrderAnotherHumanBottom;
   final VoidCallback onShowOrderBoxBottom;
   final sdk.Context sdkContext;
+  final String selectedAddress;
+  final String destinationAddress;
+  final String? routeDistance;
 
   @override
   State<SearchRouteBottom> createState() => _SearchRouteBottomState();
@@ -39,26 +47,16 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
   int? _currentIndex;
   final LocationService _locationService = LocationService();
   StreamSubscription<String>? _addressSubscription;
-  String _currentAddress = 'Ош';
-  String _destinationAddress = 'Введите точку отправления';
 
   void onSelectedTariff(int? index) => setState(() => _currentIndex = index);
 
   @override
   void initState() {
     super.initState();
-    _initializeLocation();
+    // _currentAddress = widget.selectedAddress;
+    // _initializeLocation();
   }
 
-  void _initializeLocation() {
-    _addressSubscription = _locationService.addressStream.listen((address) {
-      if (mounted) {
-        setState(() {
-          _currentAddress = address;
-        });
-      }
-    });
-  }
 
   @override
   void dispose() {
@@ -66,26 +64,6 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
     super.dispose();
   }
 
-  void _openSearchDialog() async {
-    final result = await showModalBottomSheet(
-      isScrollControlled: true,
-      useSafeArea: true,
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return FractionallySizedBox(
-          heightFactor: 0.9,
-          child: SearchBoxBottom(sdkContext: widget.sdkContext),
-        );
-      },
-    );
-
-    if (result != null && result['address'] != null) {
-      setState(() {
-        _destinationAddress = result['address'];
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,14 +102,15 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
                   child: Column(
                     spacing: 8,
                     children: [
-                      _buildBox(address: _currentAddress),
-                      _buildBox(address: _destinationAddress, onTap: _openSearchDialog),
+                      _buildBox(address: widget.selectedAddress, onTap: widget.onTap),
+                      _buildBox(address: widget.destinationAddress, onTap: widget.onTapDestinationAddress),
                     ],
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
+            // Text('_routeDistance: ${widget.routeDistance ?? 'gg'}'),
             SizedBox(
               height: MediaQuery.of(context).size.height * 0.22,
               child: ListView(
@@ -170,7 +149,7 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
             _buildAnotherParametr(title: 'Способ оплаты', onTap: widget.onShowPaymentBottom),
             const SizedBox(height: 16),
             CustomButton(text: 'Заказать', onPressed: () {
-              Navigator.pop(context);
+              // Navigator.pop(context);
               widget.onShowOrderBoxBottom.call();
             },),
           ],
@@ -211,7 +190,7 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
             ),
             SizedBox(height: 7),
             Text(
-              "$tariffPrice c",
+              "${widget.routeDistance}км $tariffPrice c",
               style: AppTextStyles.h3.copyWith(color: AppColors.black),
             ),
             SizedBox(height: 7),
