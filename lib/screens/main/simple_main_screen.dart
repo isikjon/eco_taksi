@@ -12,12 +12,19 @@ import 'package:eco_taksi/screens/main/widgets/search_route_bottom.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/location_service.dart';
+import '../../services/order_service.dart';
+import '../../services/client_websocket_service.dart';
 import '../../styles/app_colors.dart';
 import '../../styles/app_text_styles.dart';
 import '../../styles/app_spacing.dart';
 import '../../services/auth_service.dart';
 import '../profile/profile_screen.dart';
+import '../orders/searching_driver_screen.dart';
+import '../orders/driver_on_way_screen.dart';
+import '../orders/trip_in_progress_screen.dart';
+import '../orders/order_review_screen.dart';
 import '../security/security_screen.dart';
 import '../orders/order_history_screen.dart';
 import '../support/support_screen.dart';
@@ -47,17 +54,16 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
   sdk.TrafficRoute? _currentRoute;
   sdk.RouteMapObjectSource? _routeSource;
   String _routeInfo = '';
+  Offset? _selectedPointScreenPosition;
 
   String? _selectedAddress;
   String? _destinationAddress;
 
   String _routeDistance = '';
-  String _routeDuration = '';
 
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final LocationService _locationService = LocationService();
-  StreamSubscription<String>? _addressSubscription;
 
   final sdkContext = AppContainer().initializeSdk();
   final _mapWidgetController = sdk.MapWidgetController();
@@ -73,7 +79,7 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
     _initSdkAndMap();
     _initializeLocation();
     _searchManager = sdk.SearchManager.createOnlineManager(sdkContext);
-
+    _initializeWebSocketAndOrderService();
 
     // Инициализация анимации пульсации
     _animationController = AnimationController(
@@ -91,7 +97,7 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
 
   void _initializeLocation() {
     _locationService.initialize();
-    _addressSubscription = _locationService.addressStream.listen((address) {
+    _locationService.addressStream.listen((address) {
       if (mounted) {
         setState(() {
           _selectedAddress = address;
@@ -125,7 +131,6 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
 
       final loc = await locationService.lastLocation().firstWhere(
         (l) => l != null,
-        orElse: () => null,
       );
 
       if (loc != null) {
@@ -147,6 +152,57 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
     _animationController.dispose();
     locationSubscription?.cancel();
     super.dispose();
+  }
+
+  Future<void> _initializeWebSocketAndOrderService() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final clientPhone = prefs.getString('client_phone');
+      
+      if (clientPhone != null && clientPhone.isNotEmpty) {
+        await ClientWebSocketService().connect(clientPhone);
+        await OrderService().loadCurrentOrderFromPrefs();
+        
+        final currentOrder = OrderService().currentOrder;
+        if (currentOrder != null && mounted) {
+          final status = currentOrder['status'];
+          print('🔍 [SimpleMain] Active order found with status: $status');
+          
+          _navigateToOrderScreen(currentOrder, status);
+        }
+      }
+    } catch (e) {
+      print('❌ [SimpleMain] Error initializing WebSocket/OrderService: $e');
+    }
+  }
+
+  void _navigateToOrderScreen(Map<String, dynamic> orderData, String status) {
+    Widget? screen;
+    
+    switch (status) {
+      case 'received':
+        screen = SearchingDriverScreen(orderData: orderData);
+        break;
+      case 'accepted':
+      case 'navigating_to_a':
+      case 'arrived_at_a':
+        screen = DriverOnWayScreen(orderData: orderData);
+        break;
+      case 'navigating_to_b':
+        screen = TripInProgressScreen(orderData: orderData);
+        break;
+      case 'completed':
+        screen = OrderReviewScreen(orderData: orderData);
+        break;
+      default:
+        return;
+    }
+    
+    if (screen != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => screen!),
+      );
+    }
   }
 
   Future<void> _loadUserName() async {
@@ -195,6 +251,10 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
             // Информация о маршруте (показывается после построения маршрута)
             if (_routeInfo.isNotEmpty && !_isSelectingPoint)
               _buildRouteInfoPanel(),
+
+            // Визуальный маркер выбранной точки
+            if (_selectedPointScreenPosition != null && _isSelectingPoint)
+              _buildMarkerOverlay(),
 
             // sdk.DashboardWidget(
             //   controller: sdk.DashboardController(navigationManager: sdk.NavigationManager(sdkContext), map: _sdkMap!),
@@ -552,6 +612,7 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
     setState(() {
       _isSelectingPoint = false;
       _selectedPointDestination = null;
+      _selectedPointScreenPosition = null;
     });
   }
 
@@ -603,10 +664,10 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
 
       final address = await _getAddressFromCoordinates(newPoint);
 
-
       setState(() {
         _selectedPointDestination = newPoint;
         _destinationAddress = address ?? 'Адрес не найден';
+        _selectedPointScreenPosition = localPosition;
       });
 
       print('Выбрана точка: $selectedLat, $selectedLng');
@@ -629,7 +690,7 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
         final obj = result.firstPage!.items.first;
 
         // Используем существующий метод для форматирования адреса
-        return obj.title ?? '';
+        return obj.title;
       }
 
       return null;
@@ -781,6 +842,56 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
   }
 
 
+  Widget _buildMarkerOverlay() {
+    if (_selectedPointScreenPosition == null) return const SizedBox.shrink();
+
+    return Positioned(
+      left: _selectedPointScreenPosition!.dx - 24,
+      top: _selectedPointScreenPosition!.dy - 48,
+      child: TweenAnimationBuilder<double>(
+        duration: const Duration(milliseconds: 300),
+        tween: Tween(begin: 0.0, end: 1.0),
+        builder: (context, value, child) {
+          return Transform.scale(
+            scale: value,
+            child: Column(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.red.withOpacity(0.4),
+                        blurRadius: 12,
+                        spreadRadius: 4,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.location_on,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
+                Container(
+                  width: 4,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildRouteInfoPanel() {
     return Positioned(
       bottom: 100,
@@ -846,34 +957,6 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
     );
   }
 
-
-  Widget _buildSelectedPointMarker() {
-    return Positioned(
-      top: MediaQuery.of(context).size.height * 0.5 - 20,
-      left: MediaQuery.of(context).size.width * 0.5 - 20,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: Colors.blue,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.location_on,
-          color: Colors.white,
-          size: 24,
-        ),
-      ),
-    );
-  }
 
   void _clearRoute() {
     if (_routeSource != null && _sdkMap != null) {

@@ -1,15 +1,17 @@
-import 'dart:async';
 import 'package:eco_taksi/styles/app_assets.dart';
 import 'package:eco_taksi/styles/app_border_radius.dart';
 import 'package:eco_taksi/styles/app_colors.dart';
 import 'package:eco_taksi/styles/app_spacing.dart';
 import 'package:eco_taksi/styles/app_text_styles.dart';
 import 'package:eco_taksi/widgets/custom_button.dart';
-import 'package:eco_taksi/services/location_service.dart';
-import 'package:eco_taksi/screens/main/widgets/search_box_bottom.dart';
 import 'package:dgis_mobile_sdk_full/dgis.dart' as sdk;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import '../../../services/order_service.dart';
+import '../../../services/client_websocket_service.dart';
+import '../../orders/searching_driver_screen.dart';
 
 class SearchRouteBottom extends StatefulWidget {
   const SearchRouteBottom({
@@ -25,6 +27,10 @@ class SearchRouteBottom extends StatefulWidget {
     required this.onTapDestinationAddress,
     required this.destinationAddress,
     this.routeDistance,
+    this.pickupLatitude,
+    this.pickupLongitude,
+    this.destinationLatitude,
+    this.destinationLongitude,
   });
 
   final ScrollController controller;
@@ -38,6 +44,10 @@ class SearchRouteBottom extends StatefulWidget {
   final String selectedAddress;
   final String destinationAddress;
   final String? routeDistance;
+  final double? pickupLatitude;
+  final double? pickupLongitude;
+  final double? destinationLatitude;
+  final double? destinationLongitude;
 
   @override
   State<SearchRouteBottom> createState() => _SearchRouteBottomState();
@@ -45,23 +55,149 @@ class SearchRouteBottom extends StatefulWidget {
 
 class _SearchRouteBottomState extends State<SearchRouteBottom> {
   int? _currentIndex;
-  final LocationService _locationService = LocationService();
-  StreamSubscription<String>? _addressSubscription;
+
+  final Map<String, double> _tariffPrices = {
+    'Эконом': 48,
+    'Комфорт': 60,
+    'Бизнес': 80,
+  };
 
   void onSelectedTariff(int? index) => setState(() => _currentIndex = index);
+
+  double _calculatePrice(String tariff) {
+    if (widget.routeDistance == null || widget.routeDistance!.isEmpty) {
+      return 0;
+    }
+    
+    try {
+      final distance = double.parse(widget.routeDistance!);
+      final pricePerKm = _tariffPrices[tariff] ?? 48;
+      return distance * pricePerKm;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  int _calculateTime() {
+    if (widget.routeDistance == null || widget.routeDistance!.isEmpty) {
+      return 5;
+    }
+    
+    try {
+      final distance = double.parse(widget.routeDistance!);
+      final averageSpeed = 40;
+      final timeInHours = distance / averageSpeed;
+      final timeInMinutes = (timeInHours * 60).ceil();
+      return timeInMinutes < 1 ? 1 : timeInMinutes;
+    } catch (e) {
+      return 5;
+    }
+  }
+
+  String _getSelectedTariff() {
+    switch (_currentIndex) {
+      case 0:
+        return 'Эконом';
+      case 1:
+        return 'Комфорт';
+      case 2:
+        return 'Бизнес';
+      default:
+        return 'Эконом';
+    }
+  }
+
+  Future<void> _handleOrderCreation() async {
+    if (widget.pickupLatitude == null || widget.pickupLongitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Выберите точку отправления')),
+      );
+      return;
+    }
+
+    if (widget.destinationLatitude == null || widget.destinationLongitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Выберите точку назначения')),
+      );
+      return;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final clientPhone = prefs.getString('client_phone') ?? '';
+      final clientDataString = prefs.getString('client_data');
+      
+      String clientName = 'Клиент';
+      if (clientDataString != null) {
+        try {
+          final clientData = json.decode(clientDataString);
+          clientName = '${clientData['first_name']} ${clientData['last_name']}';
+        } catch (e) {
+          print('Error parsing client data: $e');
+        }
+      }
+
+      if (clientPhone.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ошибка: номер телефона не найден')),
+        );
+        return;
+      }
+
+      final selectedTariff = _getSelectedTariff();
+      final price = _calculatePrice(selectedTariff);
+      final distance = widget.routeDistance != null && widget.routeDistance!.isNotEmpty
+          ? double.tryParse(widget.routeDistance!)
+          : null;
+      final duration = _calculateTime();
+
+      await ClientWebSocketService().connect(clientPhone);
+
+      final result = await OrderService().createOrder(
+        clientPhone: clientPhone,
+        clientName: clientName,
+        pickupAddress: widget.selectedAddress,
+        pickupLatitude: widget.pickupLatitude!,
+        pickupLongitude: widget.pickupLongitude!,
+        destinationAddress: widget.destinationAddress,
+        destinationLatitude: widget.destinationLatitude!,
+        destinationLongitude: widget.destinationLongitude!,
+        tariff: selectedTariff,
+        price: price,
+        distance: distance,
+        duration: duration,
+      );
+
+      if (result['success']) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => SearchingDriverScreen(
+              orderData: result['order'],
+            ),
+          ),
+        );
+      } else {
+        if (result['error_code'] == 'NO_DRIVERS_AVAILABLE') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Нет доступных водителей')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result['error'] ?? 'Ошибка создания заказа')),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error creating order: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $e')),
+      );
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    // _currentAddress = widget.selectedAddress;
-    // _initializeLocation();
-  }
-
-
-  @override
-  void dispose() {
-    _addressSubscription?.cancel();
-    super.dispose();
   }
 
 
@@ -120,22 +256,16 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
                   _buildTariff(
                     image: AppAssets.econom,
                     tariffName: 'Эконом',
-                    tariffPrice: '333',
-                    tariffTime: '5',
                     index: 0,
                   ),
                   _buildTariff(
                     image: AppAssets.comfort,
-                    tariffName: 'Комфрорт',
-                    tariffPrice: '677',
-                    tariffTime: '5',
+                    tariffName: 'Комфорт',
                     index: 1,
                   ),
                   _buildTariff(
                     image: AppAssets.mineven,
-                    tariffName: 'Минивэн',
-                    tariffPrice: '3433',
-                    tariffTime: '5',
+                    tariffName: 'Бизнес',
                     index: 2,
                   ),
                 ],
@@ -148,10 +278,10 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
             const SizedBox(height: 16),
             _buildAnotherParametr(title: 'Способ оплаты', onTap: widget.onShowPaymentBottom),
             const SizedBox(height: 16),
-            CustomButton(text: 'Заказать', onPressed: () {
-              // Navigator.pop(context);
-              widget.onShowOrderBoxBottom.call();
-            },),
+            CustomButton(
+              text: 'Заказать', 
+              onPressed: _handleOrderCreation,
+            ),
           ],
         ),
       ),
@@ -161,22 +291,47 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
   _buildTariff({
     String? image,
     String? tariffName,
-    String? tariffPrice,
-    String? tariffTime,
     int? index,
   }) {
+    final calculatedPrice = _calculatePrice(tariffName ?? 'Эконом');
+    final calculatedTime = _calculateTime();
+    final isSelected = index == _currentIndex;
+    
+    String distanceText = '0 метров';
+    if (widget.routeDistance != null && widget.routeDistance!.isNotEmpty) {
+      try {
+        final distance = double.parse(widget.routeDistance!);
+        if (distance < 1.0) {
+          final meters = (distance * 1000).toStringAsFixed(0);
+          distanceText = '$meters метров';
+        } else {
+          distanceText = '${distance.toStringAsFixed(2)} км';
+        }
+      } catch (e) {
+        distanceText = '0 метров';
+      }
+    }
+    
     return InkWell(
       onTap: () => onSelectedTariff(index),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
         margin: AppSpacing.r8.copyWith(bottom: 10),
         padding: AppSpacing.all16,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: AppBorderRadius.all16,
+          border: Border.all(
+            color: isSelected ? AppColors.primary : Colors.transparent,
+            width: 1,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
+              color: isSelected 
+                  ? AppColors.primary.withOpacity(0.2)
+                  : Colors.black.withOpacity(0.1),
+              blurRadius: isSelected ? 12 : 8,
               offset: Offset(0, 4),
             ),
           ],
@@ -190,7 +345,7 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
             ),
             SizedBox(height: 7),
             Text(
-              "${widget.routeDistance}км $tariffPrice c",
+              "$distanceText - ${calculatedPrice.toStringAsFixed(0)} сомов",
               style: AppTextStyles.h3.copyWith(color: AppColors.black),
             ),
             SizedBox(height: 7),
@@ -205,7 +360,7 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
                 borderRadius: AppBorderRadius.all100,
               ),
               child: Text(
-                '$tariffTime мин',
+                '$calculatedTime мин',
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontWeight: FontWeight.bold,
                   color: AppColors.background,
