@@ -21,7 +21,17 @@ class AppSpacing {
   static const double elevationLarge = 8.0;
 
   static const all16 = EdgeInsets.all(16);
+  static const all24 = EdgeInsets.all(24);
   static const h16 = EdgeInsets.symmetric(horizontal: 16);
   static const all12 = EdgeInsets.all(12);
   static const r8 = EdgeInsets.only(right: 8);
+  
+  static const verticalSpace8 = SizedBox(height: 8);
+  static const verticalSpace12 = SizedBox(height: 12);
+  static const verticalSpace16 = SizedBox(height: 16);
+  static const verticalSpace24 = SizedBox(height: 24);
+  static const verticalSpace32 = SizedBox(height: 32);
+  
+  static const horizontalSpace8 = SizedBox(width: 8);
+  static const horizontalSpace12 = SizedBox(width: 12);
 }

@@ -286,6 +286,10 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
                         sdkContext: sdkContext,
                         selectedAddress: _selectedAddress ?? 'Ош',
                         destinationAddress: _destinationAddress ?? 'Выберите адрес',
+                        pickupLatitude: _selectedPointAddress?.latitude.value,
+                        pickupLongitude: _selectedPointAddress?.longitude.value,
+                        destinationLatitude: _selectedPointDestination?.latitude.value,
+                        destinationLongitude: _selectedPointDestination?.longitude.value,
                       );
                     },
                   ),
