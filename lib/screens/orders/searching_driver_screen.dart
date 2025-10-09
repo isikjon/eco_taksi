@@ -10,11 +10,11 @@ import 'no_drivers_screen.dart';
 import 'driver_on_way_screen.dart';
 
 class SearchingDriverScreen extends StatefulWidget {
-  final Map<String, dynamic> orderData;
+  final Map<String, dynamic>? orderData;
 
   const SearchingDriverScreen({
     super.key,
-    required this.orderData,
+    this.orderData,
   });
 
   @override
@@ -60,6 +60,11 @@ class _SearchingDriverScreenState extends State<SearchingDriverScreen>
   }
 
   void _startListening() {
+    if (widget.orderData == null) {
+      print('⚠️ [SearchingDriver] No order data, skipping WebSocket listener');
+      return;
+    }
+    
     _wsSubscription = ClientWebSocketService().messages.listen((message) {
       if (_disposed) return;
 
@@ -84,7 +89,7 @@ class _SearchingDriverScreenState extends State<SearchingDriverScreen>
   }
 
   void _startTimeout() {
-    _timeoutTimer = Timer(const Duration(seconds: 60), () {
+    _timeoutTimer = Timer(const Duration(seconds: 10), () {
       if (!_disposed && mounted) {
         print('⏱️ [SearchingDriver] Timeout reached');
         _navigateToNoDrivers();

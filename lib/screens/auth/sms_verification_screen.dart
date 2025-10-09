@@ -295,15 +295,15 @@ class _SmsVerificationScreenState extends State<SmsVerificationScreen> {
     final digits = phoneNumber.replaceAll(RegExp(r'[^\d]'), '');
     
     // Если номер начинается с 0, заменяем на +996
-    if (digits.startsWith('0') && digits.length == 10) {
+    if (digits.startsWith('0') && digits.length == 9) {
       final withoutZero = digits.substring(1);
-      return '+996 ${withoutZero.substring(0, 3)} ${withoutZero.substring(3, 6)} ${withoutZero.substring(6, 8)} ${withoutZero.substring(8)}';
+      return '+996 ${withoutZero.substring(0, 3)} ${withoutZero.substring(3, 6)} ${withoutZero.substring(6)}';
     }
     
     // Если номер уже в международном формате
     if (digits.startsWith('996') && digits.length == 12) {
       final withoutCountry = digits.substring(3);
-      return '+996 ${withoutCountry.substring(0, 3)} ${withoutCountry.substring(3, 6)} ${withoutCountry.substring(6, 8)} ${withoutCountry.substring(8)}';
+      return '+996 ${withoutCountry.substring(0, 3)} ${withoutCountry.substring(3, 6)} ${withoutCountry.substring(6)}';
     }
     
     // Возвращаем как есть, если формат не распознан

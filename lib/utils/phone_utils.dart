@@ -33,10 +33,10 @@ class PhoneUtils {
     
     String normalized = normalizePhoneNumber(phoneNumber);
     
-    // Форматируем для отображения: +996 XXX XXX XXX
+    // Форматируем для отображения: +996 123 456 789 (12 цифр)
     if (normalized.startsWith('+996') && normalized.length == 13) {
       String digits = normalized.substring(4);
-      return '+996 ${digits.substring(0, 3)} ${digits.substring(3, 6)} ${digits.substring(6, 9)}';
+      return '+996 ${digits.substring(0, 3)} ${digits.substring(3, 6)} ${digits.substring(6)}';
     }
     
     return normalized;

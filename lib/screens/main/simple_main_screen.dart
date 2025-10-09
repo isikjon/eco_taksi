@@ -60,6 +60,9 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
   String? _destinationAddress;
 
   String _routeDistance = '';
+  
+  double? _destinationLatitude;
+  double? _destinationLongitude;
 
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -274,6 +277,13 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
                     shouldCloseOnMinExtent: false,
                     expand: false,
                     builder: (context, scrollController) {
+                      print('🔧 === BEFORE PASSING TO SearchRouteBottom ===');
+                      print('📍 _selectedPointAddress: $_selectedPointAddress');
+                      print('📍 _selectedPointDestination: $_selectedPointDestination');
+                      print('📝 _selectedAddress: $_selectedAddress');
+                      print('📝 _destinationAddress: $_destinationAddress');
+                      print('📏 _routeDistance: $_routeDistance');
+                      
                       return SearchRouteBottom(
                         routeDistance: _routeDistance,
                         controller: scrollController,
@@ -288,8 +298,8 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
                         destinationAddress: _destinationAddress ?? 'Выберите адрес',
                         pickupLatitude: _selectedPointAddress?.latitude.value,
                         pickupLongitude: _selectedPointAddress?.longitude.value,
-                        destinationLatitude: _selectedPointDestination?.latitude.value,
-                        destinationLongitude: _selectedPointDestination?.longitude.value,
+                        destinationLatitude: _destinationLatitude,
+                        destinationLongitude: _destinationLongitude,
                       );
                     },
                   ),
@@ -384,21 +394,50 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
         );
       },
     ).then((result) {
-      print('RESULR: $result');
+      print('🔍 === SEARCH RESULT FOR DESTINATION ===');
+      print('📦 Full result: $result');
+      
+      if (result == null) {
+        print('⚠️ Result is null');
+        return;
+      }
+      
+      print('🎯 where: ${result['where']}');
+      print('📝 title: ${result['title']}');
+      print('📍 coordinates: ${result['coordinates']}');
+      print('🎬 action: ${result['action']}');
+      
       // Обрабатываем результат от SearchBoxBottom
-      if (result != null && result['action'] == 'select_point') {
+      if (result['action'] == 'select_point') {
+        print('✅ Switching to point selection mode');
         // Переключаемся в режим выбора точки
         setState(() {
           _isSelectingPoint = true;
         });
-      } else if(result != null && result['where'] == false && result['coordinates'] != null) {
+      } else if(result['where'] == false && result['coordinates'] != null) {
+        print('✅ Setting destination from search:');
+        print('   Address: ${result['title']}');
+        print('   Coordinates: ${result['coordinates']}');
+        final sdk.GeoPoint coords = result['coordinates'];
         setState(() {
           _destinationAddress = result['title'];
-          _selectedPointDestination = result['coordinates'];
+          _selectedPointDestination = coords;
+          _destinationLatitude = coords.latitude.value;
+          _destinationLongitude = coords.longitude.value;
           _isSelectingPoint = false;
         });
+        print('✅ Destination set successfully');
+        print('   _destinationAddress: $_destinationAddress');
+        print('   _selectedPointDestination: $_selectedPointDestination');
+        print('   _destinationLatitude: $_destinationLatitude');
+        print('   _destinationLongitude: $_destinationLongitude');
         _buildRouteToSelectedPoint();
+      } else {
+        print('⚠️ Result does not match any condition');
+        print('   where == false: ${result['where'] == false}');
+        print('   coordinates != null: ${result['coordinates'] != null}');
       }
+      print('🏁 === END SEARCH RESULT ===');
     });
   }
 
@@ -671,10 +710,13 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
       setState(() {
         _selectedPointDestination = newPoint;
         _destinationAddress = address ?? 'Адрес не найден';
+        _destinationLatitude = newPoint.latitude.value;
+        _destinationLongitude = newPoint.longitude.value;
         _selectedPointScreenPosition = localPosition;
       });
 
       print('Выбрана точка: $selectedLat, $selectedLng');
+      print('Сохранены координаты: $_destinationLatitude, $_destinationLongitude');
       print('Центр камеры: ${centerPoint.latitude.value}, ${centerPoint.longitude.value}');
       print('Zoom: $zoom');
     }
@@ -706,7 +748,14 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
 
 
   Future<void> _buildRouteToSelectedPoint() async {
-    if (_selectedPointDestination == null || _sdkMap == null) return;
+    print('🗺️ === BUILD ROUTE START ===');
+    print('📍 _selectedPointDestination: $_selectedPointDestination');
+    print('📍 _selectedPointAddress: $_selectedPointAddress');
+    
+    if (_selectedPointDestination == null || _sdkMap == null) {
+      print('❌ Cannot build route: destination=$_selectedPointDestination, map=$_sdkMap');
+      return;
+    }
 
     try {
       // Получаем текущую позицию пользователя
@@ -769,11 +818,16 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
             _selectedPointDestination!.longitude.value,
           );
 
+          print('📏 Calculated distance: ${distance.toStringAsFixed(2)} км');
+          print('📍 Before setState: _selectedPointDestination = $_selectedPointDestination');
+          
           setState(() {
             _routeDistance = distance.toStringAsFixed(2);
           });
-
-          print('Расстояние: ${distance.toStringAsFixed(2)} км');
+          
+          print('📍 After setState: _selectedPointDestination = $_selectedPointDestination');
+        } else {
+          print('⚠️ _selectedPointDestination is null, cannot calculate distance');
         }
 
         // Создаем источник данных для маршрута
@@ -817,6 +871,11 @@ class _SimpleMainScreenState extends State<SimpleMainScreen> with TickerProvider
         ),
       );
     }
+    
+    print('🏁 === BUILD ROUTE END ===');
+    print('📍 Final _selectedPointDestination: $_selectedPointDestination');
+    print('📍 Final _selectedPointAddress: $_selectedPointAddress');
+    print('📏 Final _routeDistance: $_routeDistance');
   }
 
   double calculateDistanceKm(double lat1, double lon1, double lat2, double lon2) {
