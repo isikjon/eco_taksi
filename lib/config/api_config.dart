@@ -1,6 +1,6 @@
 class ApiConfig {
   // Основные URL серверов
-  static const String productionBaseUrl = 'https://new.superadmin.taxi.wazir.kg';
+  static const String productionBaseUrl = 'http://192.168.1.120:8081';
   static const String developmentBaseUrl = 'http://127.0.0.1:8080';
   // static const String testBaseUrl = 'https://test.superadmin.taxi.wazir.kg';
   

@@ -41,13 +41,18 @@ class ClientWebSocketService {
       }
 
       final normalizedPhone = _clientPhone!.replaceAll(RegExp(r'[^\d]'), '');
+      
+      print('🔍 [ClientWebSocket] ApiConfig.baseUrl = ${ApiConfig.baseUrl}');
+      
       final wsUrl = ApiConfig.baseUrl
           .replaceFirst('http://', 'ws://')
           .replaceFirst('https://', 'wss://');
       
+      print('🔍 [ClientWebSocket] wsUrl after conversion = $wsUrl');
+      
       final uri = Uri.parse('$wsUrl/ws/orders/client/$normalizedPhone');
       
-      print('🔍 [ClientWebSocket] Connecting to: $uri');
+      print('🔍 [ClientWebSocket] Final URI = $uri');
 
       _channel = WebSocketChannel.connect(uri);
 

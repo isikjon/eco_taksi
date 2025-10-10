@@ -82,6 +82,20 @@ class _SearchingDriverScreenState extends State<SearchingDriverScreen>
           _navigateToNoDrivers();
           break;
 
+        case 'order_status_update':
+          final orderData = message['data'];
+          final status = orderData['status'];
+          print('🔍 [SearchingDriver] Order status: $status');
+          
+          if (status == 'accepted' || status == 'navigating_to_a') {
+            _timeoutTimer?.cancel();
+            _navigateToDriverOnWay(orderData);
+          } else if (status == 'rejected_by_driver') {
+            _timeoutTimer?.cancel();
+            _navigateToNoDrivers();
+          }
+          break;
+
         default:
           print('⚠️ [SearchingDriver] Unhandled message type: $messageType');
       }
@@ -89,9 +103,10 @@ class _SearchingDriverScreenState extends State<SearchingDriverScreen>
   }
 
   void _startTimeout() {
-    _timeoutTimer = Timer(const Duration(seconds: 10), () {
+    // Увеличиваем таймаут до 2 минут
+    _timeoutTimer = Timer(const Duration(seconds: 120), () {
       if (!_disposed && mounted) {
-        print('⏱️ [SearchingDriver] Timeout reached');
+        print('⏱️ [SearchingDriver] Timeout reached (120s)');
         _navigateToNoDrivers();
       }
     });
