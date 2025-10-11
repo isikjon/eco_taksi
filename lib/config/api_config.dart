@@ -32,6 +32,7 @@ class ApiConfig {
         'partners': '/api/parks',
     'auth_login': '/auth/login',
     'auth_me': '/auth/me',
+    'delete_account': '/api/drivers/delete-account'
   };
   
   // Получить полный URL для эндпоинта

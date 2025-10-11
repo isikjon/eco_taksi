@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'package:eco_taksi/services/user_data_service.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../utils/phone_utils.dart';
+import 'devino_sms_service.dart';
 
 class ApiService {
   static String get baseUrl => ApiConfig.baseUrl;
@@ -143,60 +145,40 @@ class ApiService {
     };
   }
 
-  // Отправка SMS кода (пробуем разные эндпоинты)
+  // Отправка SMS кода через Devino
   Future<Map<String, dynamic>> sendSmsCode(String phoneNumber) async {
-    // Нормализуем номер телефона
-    final String normalizedPhone = PhoneUtils.normalizePhoneNumber(phoneNumber);
-    print('📱 Original phone: $phoneNumber');
-    print('📱 Normalized phone: $normalizedPhone');
-    
-    // Используем правильный эндпоинт для SMS
-    final List<String> smsEndpoints = [
-      '/api/sms/send',
-    ];
+    try {
+      print('📱 [ApiService] Отправка SMS через Devino для: $phoneNumber');
 
-    for (String endpoint in smsEndpoints) {
-      try {
-        print('📱 Trying SMS endpoint: ${ApiConfig.baseUrl}$endpoint');
-        print('📱 Sending SMS to: $normalizedPhone');
-        
-        final response = await http.post(
-          Uri.parse('${ApiConfig.baseUrl}$endpoint'),
-          headers: ApiConfig.defaultHeaders,
-          body: json.encode({
-            'phoneNumber': normalizedPhone,
-          }),
-        );
+      final result = await DevinoSmsService.instance.sendSmsCode(phoneNumber);
 
-        print('📱 SMS [$endpoint] status: ${response.statusCode}');
-        print('📱 SMS [$endpoint] body: ${response.body}');
-
-        if (response.statusCode == 200 || response.statusCode == 201) {
-          print('✅ SMS отправлен через: $endpoint');
-          return {
-            'success': true,
-            'data': response.body.isNotEmpty ? json.decode(response.body) : {'status': 'sent'},
-            'endpoint': endpoint,
-          };
-        } else if (response.statusCode != 404) {
-          // Если не 404, значит эндпоинт найден, но есть другая ошибка
-          return {
-            'success': false,
-            'error': 'Ошибка отправки SMS [$endpoint]: ${response.statusCode}',
-            'details': response.body,
-            'endpoint': endpoint,
-          };
-        }
-      } catch (e) {
-        print('❌ SMS error [$endpoint]: $e');
-        continue;
+      if (result['success']) {
+        print('✅ [ApiService] SMS успешно отправлен через Devino');
+        return {
+          'success': true,
+          'data': {
+            'status': 'sent',
+            'messageId': result['messageId'],
+            'smsCode': result['smsCode'],
+          },
+          'provider': 'devino',
+        };
+      } else {
+        print('❌ [ApiService] Ошибка отправки SMS через Devino: ${result['error']}');
+        return {
+          'success': false,
+          'error': result['error'],
+          'provider': 'devino',
+        };
       }
+    } catch (e) {
+      print('❌ [ApiService] Критическая ошибка отправки SMS: $e');
+      return {
+        'success': false,
+        'error': 'Критическая ошибка: $e',
+        'provider': 'devino',
+      };
     }
-    
-    return {
-      'success': false,
-      'error': 'Не найден рабочий эндпоинт для SMS. Проверьте документацию API.',
-    };
   }
 
   // Получить список таксопарков
@@ -529,4 +511,34 @@ class ApiService {
     }
     print('');
   }
+
+  Future<void> deleteAccount() async {
+    try {
+      await UserDataService.instance.loadFromStorage();
+      final userData = UserDataService.instance.userData;
+      final phoneNumber = userData['phoneNumber'];
+
+      final encodedPhone = Uri.encodeComponent(phoneNumber);
+
+      final url = Uri.parse(
+          '${ApiConfig.getEndpointUrl('delete_account')}?phoneNumber=$encodedPhone'
+      );
+
+      final response = await http.delete(
+        url,
+        headers: ApiConfig.defaultHeaders,
+      );
+
+      print('✅ deleteAccount response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        print('✅ deleteAccount success');
+      } else {
+        print('❌ deleteAccount failed: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Exception deleting account: $e');
+    }
+  }
+
 }

@@ -10,11 +10,11 @@ import 'no_drivers_screen.dart';
 import 'driver_on_way_screen.dart';
 
 class SearchingDriverScreen extends StatefulWidget {
-  final Map<String, dynamic> orderData;
+  final Map<String, dynamic>? orderData;
 
   const SearchingDriverScreen({
     super.key,
-    required this.orderData,
+    this.orderData,
   });
 
   @override
@@ -60,6 +60,11 @@ class _SearchingDriverScreenState extends State<SearchingDriverScreen>
   }
 
   void _startListening() {
+    if (widget.orderData == null) {
+      print('⚠️ [SearchingDriver] No order data, skipping WebSocket listener');
+      return;
+    }
+    
     _wsSubscription = ClientWebSocketService().messages.listen((message) {
       if (_disposed) return;
 
@@ -77,6 +82,20 @@ class _SearchingDriverScreenState extends State<SearchingDriverScreen>
           _navigateToNoDrivers();
           break;
 
+        case 'order_status_update':
+          final orderData = message['data'];
+          final status = orderData['status'];
+          print('🔍 [SearchingDriver] Order status: $status');
+          
+          if (status == 'accepted' || status == 'navigating_to_a') {
+            _timeoutTimer?.cancel();
+            _navigateToDriverOnWay(orderData);
+          } else if (status == 'rejected_by_driver') {
+            _timeoutTimer?.cancel();
+            _navigateToNoDrivers();
+          }
+          break;
+
         default:
           print('⚠️ [SearchingDriver] Unhandled message type: $messageType');
       }
@@ -84,9 +103,10 @@ class _SearchingDriverScreenState extends State<SearchingDriverScreen>
   }
 
   void _startTimeout() {
-    _timeoutTimer = Timer(const Duration(seconds: 60), () {
+    // Увеличиваем таймаут до 2 минут
+    _timeoutTimer = Timer(const Duration(seconds: 120), () {
       if (!_disposed && mounted) {
-        print('⏱️ [SearchingDriver] Timeout reached');
+        print('⏱️ [SearchingDriver] Timeout reached (120s)');
         _navigateToNoDrivers();
       }
     });

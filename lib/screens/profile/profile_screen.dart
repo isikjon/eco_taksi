@@ -1,3 +1,4 @@
+import 'package:eco_taksi/screens/auth/phone_auth_screen.dart';
 import 'package:flutter/material.dart';
 import '../../styles/app_colors.dart';
 import '../../styles/app_text_styles.dart';
@@ -18,9 +19,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
-  
+
   bool _isEditing = false;
   bool _isLoading = false;
+  bool _isLoadingDeleteAccount = true;
   String _userName = 'Пользователь';
 
   @override
@@ -41,14 +43,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final clientData = await AuthService.getCurrentClient();
       print('ProfileScreen - Loaded client data: $clientData');
-      
+
       if (clientData != null && mounted) {
         final firstName = clientData['first_name'] ?? '';
         final lastName = clientData['last_name'] ?? '';
         final phoneNumber = clientData['phone_number'] ?? '';
-        
-        print('ProfileScreen - Parsed data: firstName=$firstName, lastName=$lastName, phoneNumber=$phoneNumber');
-        
+
+        print(
+          'ProfileScreen - Parsed data: firstName=$firstName, lastName=$lastName, phoneNumber=$phoneNumber',
+        );
+
         setState(() {
           _firstNameController.text = firstName;
           _lastNameController.text = lastName;
@@ -66,6 +70,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+
+
   Future<void> _saveChanges() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -78,17 +84,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'user': {
           'firstName': _firstNameController.text.trim(),
           'lastName': _lastNameController.text.trim(),
-        }
+        },
       };
 
       final result = await AuthService.updateClientProfile(userData);
-      
+
       if (result['success']) {
         setState(() {
           _isEditing = false;
-          _userName = '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim();
+          _userName =
+              '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
+                  .trim();
         });
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -96,7 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               backgroundColor: AppColors.success,
             ),
           );
-          
+
           // Возвращаем результат обновления
           Navigator.of(context).pop(true);
         }
@@ -132,6 +140,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await AuthService.logout();
     if (mounted) {
       Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    try {
+      await AuthService.deleteAccount();
+      setState(() {
+        _isLoadingDeleteAccount = false;
+      });
+    } catch (e) {
+      print('Error loading user data: $e');
+      setState(() {
+        _isLoadingDeleteAccount = false;
+      });
     }
   }
 
@@ -182,7 +204,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               children: [
                 const SizedBox(height: AppSpacing.lg),
-                
+
                 // Аватар
                 Container(
                   width: 100,
@@ -198,9 +220,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     size: 50,
                   ),
                 ),
-                
+
                 const SizedBox(height: AppSpacing.xxl),
-                
+
                 // Поля ввода
                 CustomTextField(
                   label: 'Имя',
@@ -213,9 +235,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     return null;
                   },
                 ),
-                
+
                 const SizedBox(height: AppSpacing.lg),
-                
+
                 CustomTextField(
                   label: 'Фамилия',
                   controller: _lastNameController,
@@ -227,17 +249,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     return null;
                   },
                 ),
-                
+
                 const SizedBox(height: AppSpacing.lg),
-                
+
                 CustomTextField(
                   label: 'Номер телефона',
                   controller: _phoneController,
                   enabled: false,
                 ),
-                
+
                 const SizedBox(height: AppSpacing.xxl),
-                
+
                 // Кнопки действий
                 if (_isEditing) ...[
                   CustomButton(
@@ -245,9 +267,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onPressed: _saveChanges,
                     isLoading: _isLoading,
                   ),
-                  
+
                   const SizedBox(height: AppSpacing.md),
-                  
+
                   CustomButton(
                     text: 'Отмена',
                     onPressed: () {
@@ -259,16 +281,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     isSecondary: true,
                   ),
                 ],
-                
+
                 const SizedBox(height: AppSpacing.xxl),
-                
+
                 // Кнопка выхода
                 Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     border: Border.all(color: AppColors.divider),
-                    borderRadius: BorderRadius.circular(AppSpacing.borderRadius),
+                    borderRadius: BorderRadius.circular(
+                      AppSpacing.borderRadius,
+                    ),
                   ),
                   child: ListTile(
                     leading: Container(
@@ -289,6 +313,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: _logout,
                   ),
                 ),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: AppColors.divider),
+                    borderRadius: BorderRadius.circular(
+                      AppSpacing.borderRadius,
+                    ),
+                  ),
+                  child: ListTile(
+                    leading: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: const BoxDecoration(
+                        color: AppColors.textSecondary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    title: const Text(
+                      'Удалить аккаунт',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 16,
+                      ),
+                    ),
+                    onTap: _deleteAccountShow,
+                  ),
+                ),
               ],
             ),
           ),
@@ -296,4 +349,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+  Future<void> _deleteAccountShow() async {
+    // Показываем диалог подтверждения
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удаление аккаунта'),
+        content: const Text(
+            'При удалении аккаунта произойдут следующие действия:\n\n'
+                '• Все данные о поездках и истории заказов будут удалены.\n'
+                '• Все сохранённые способы оплаты и платёжная информация будут удалены.\n'
+                '• Персональные данные, включая имя, телефон и адрес электронной почты, будут удалены.\n'
+                '• Пользовательский аккаунт будет полностью удалён.\n\n'
+                'Вы уверены, что хотите продолжить?'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              'Удалить аккаунт',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true) {
+      // Показываем индикатор загрузки
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        // Выполняем выход
+
+        await _deleteAccount();
+        await AuthService.logout();
+
+        // Закрываем диалог загрузки
+        if (mounted) Navigator.of(context).pop();
+
+        // Перенаправляем на экран авторизации
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const PhoneAuthScreen()),
+                (route) => false,
+          );
+        }
+      } catch (e) {
+        // Закрываем диалог загрузки
+        if (mounted) Navigator.of(context).pop();
+
+        // Показываем ошибку
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ошибка при удалении: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
 }
+
+

@@ -9,9 +9,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:async';
 import '../../../services/order_service.dart';
 import '../../../services/client_websocket_service.dart';
-import '../../orders/searching_driver_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SearchRouteBottom extends StatefulWidget {
   const SearchRouteBottom({
@@ -55,12 +56,20 @@ class SearchRouteBottom extends StatefulWidget {
 
 class _SearchRouteBottomState extends State<SearchRouteBottom> {
   int? _currentIndex;
+  String _screenState = 'form';
+  Timer? _searchTimer;
 
   final Map<String, double> _tariffPrices = {
     'Эконом': 48,
     'Комфорт': 60,
     'Бизнес': 80,
   };
+
+  @override
+  void dispose() {
+    _searchTimer?.cancel();
+    super.dispose();
+  }
 
   void onSelectedTariff(int? index) => setState(() => _currentIndex = index);
 
@@ -108,7 +117,15 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
   }
 
   Future<void> _handleOrderCreation() async {
+    print('🚀 === START ORDER CREATION ===');
+    print('📍 Pickup: ${widget.pickupLatitude}, ${widget.pickupLongitude}');
+    print('📍 Destination: ${widget.destinationLatitude}, ${widget.destinationLongitude}');
+    print('📍 Pickup Address: ${widget.selectedAddress}');
+    print('📍 Destination Address: ${widget.destinationAddress}');
+    print('📏 Distance: ${widget.routeDistance}');
+    
     if (widget.pickupLatitude == null || widget.pickupLongitude == null) {
+      print('❌ Pickup coordinates missing');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Выберите точку отправления')),
       );
@@ -116,6 +133,7 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
     }
 
     if (widget.destinationLatitude == null || widget.destinationLongitude == null) {
+      print('❌ Destination coordinates missing');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Выберите точку назначения')),
       );
@@ -123,21 +141,29 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
     }
 
     try {
+      print('📱 Getting client data from SharedPreferences...');
       final prefs = await SharedPreferences.getInstance();
-      final clientPhone = prefs.getString('client_phone') ?? '';
       final clientDataString = prefs.getString('client_data');
       
+      print('👤 Client data string: $clientDataString');
+      
       String clientName = 'Клиент';
+      String clientPhone = '';
+      
       if (clientDataString != null) {
         try {
           final clientData = json.decode(clientDataString);
           clientName = '${clientData['first_name']} ${clientData['last_name']}';
+          clientPhone = clientData['phone_number'] ?? '';
+          print('👤 Client name: $clientName');
+          print('📞 Client phone: $clientPhone');
         } catch (e) {
-          print('Error parsing client data: $e');
+          print('❌ Error parsing client data: $e');
         }
       }
 
       if (clientPhone.isEmpty) {
+        print('❌ Client phone is empty');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Ошибка: номер телефона не найден')),
         );
@@ -151,8 +177,16 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
           : null;
       final duration = _calculateTime();
 
-      await ClientWebSocketService().connect(clientPhone);
+      print('🚗 Tariff: $selectedTariff');
+      print('💰 Price: $price');
+      print('📏 Distance: $distance');
+      print('⏱️ Duration: $duration');
 
+      print('🔌 Connecting to WebSocket...');
+      await ClientWebSocketService().connect(clientPhone);
+      print('✅ WebSocket connected');
+
+      print('📤 Creating order via API...');
       final result = await OrderService().createOrder(
         clientPhone: clientPhone,
         clientName: clientName,
@@ -168,38 +202,45 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
         duration: duration,
       );
 
+      print('📥 Order result: $result');
+
+      setState(() {
+        _screenState = 'searching';
+      });
+
       if (result['success']) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => SearchingDriverScreen(
-              orderData: result['order'],
-            ),
-          ),
-        );
+        print('✅ Order created successfully - waiting for driver...');
       } else {
-        if (result['error_code'] == 'NO_DRIVERS_AVAILABLE') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Нет доступных водителей')),
-          );
-        } else {
+        print('❌ Order creation failed: ${result['error']}');
+        if (result['error_code'] != 'NO_DRIVERS_AVAILABLE') {
+          setState(() {
+            _screenState = 'form';
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(result['error'] ?? 'Ошибка создания заказа')),
           );
+          return;
         }
       }
-    } catch (e) {
-      print('Error creating order: $e');
+
+      _searchTimer = Timer(const Duration(seconds: 10), () {
+        if (mounted) {
+          print('⏱️ Timeout - no drivers found');
+          setState(() {
+            _screenState = 'no_drivers';
+          });
+        }
+      });
+    } catch (e, stackTrace) {
+      print('❌ Error creating order: $e');
+      print('❌ Stack trace: $stackTrace');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка: $e')),
       );
     }
+    
+    print('🏁 === END ORDER CREATION ===');
   }
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -212,11 +253,15 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
           topRight: Radius.circular(16),
         ),
       ),
-      child: SingleChildScrollView(
-        controller: widget.controller,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      child: _screenState == 'searching'
+          ? _buildSearchingState()
+          : _screenState == 'no_drivers'
+              ? _buildNoDriversState()
+              : SingleChildScrollView(
+                  controller: widget.controller,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
             Row(
               spacing: 8,
               children: [
@@ -281,6 +326,102 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
             CustomButton(
               text: 'Заказать', 
               onPressed: _handleOrderCreation,
+            ),
+                    ],
+                  ),
+                ),
+    );
+  }
+
+  Widget _buildSearchingState() {
+    return Center(
+      child: Padding(
+        padding: AppSpacing.all24,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+              strokeWidth: 4,
+            ),
+            AppSpacing.verticalSpace32,
+            Text(
+              'Поиск свободных водителей поблизости',
+              style: AppTextStyles.h3.copyWith(
+                color: AppColors.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            AppSpacing.verticalSpace32,
+            CustomButton(
+              text: 'Назад',
+              onPressed: () {
+                _searchTimer?.cancel();
+                setState(() {
+                  _screenState = 'form';
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoDriversState() {
+    return Center(
+      child: Padding(
+        padding: AppSpacing.all24,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'К сожалению, свободных водителей поблизости нет',
+              style: AppTextStyles.h3.copyWith(
+                color: AppColors.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            AppSpacing.verticalSpace16,
+            Text(
+              'Позвоните диспетчеру для оформления заказа',
+              style: AppTextStyles.bodyLarge.copyWith(
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            AppSpacing.verticalSpace32,
+            Row(
+              children: [
+                Expanded(
+                  child: CustomButton(
+                    text: 'Назад',
+                    onPressed: () {
+                      setState(() {
+                        _screenState = 'form';
+                      });
+                    },
+                  ),
+                ),
+                AppSpacing.horizontalSpace12,
+                Expanded(
+                  child: CustomButton(
+                    text: 'Позвонить диспетчеру',
+                    onPressed: () async {
+                      final Uri phoneUri = Uri(scheme: 'tel', path: '+996111111111');
+                      if (await canLaunchUrl(phoneUri)) {
+                        await launchUrl(phoneUri);
+                      } else {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Не удалось совершить звонок')),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -413,3 +554,4 @@ class _SearchRouteBottomState extends State<SearchRouteBottom> {
     );
   }
 }
+

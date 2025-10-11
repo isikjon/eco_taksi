@@ -105,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Navigator.of(context).pop();
           _acceptOrder(order);
         },
-  onDecline: () {
+        onDecline: () {
           Navigator.of(context).pop();
           _declineOrder(order);
         },
