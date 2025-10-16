@@ -44,7 +44,6 @@ dependencies:
   http: ^1.1.0
   camera: ^0.10.5+5
   image_picker: ^1.0.4
-  google_maps_flutter: ^2.5.0
   dgis_mobile_sdk_full: ^12.8.0
   web_socket_channel: ^2.4.0
 
@@ -75,6 +74,7 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/dgissdk.key
+    - assets/dgissdk_ios.key
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

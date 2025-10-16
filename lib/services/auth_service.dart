@@ -1,3 +1,5 @@
+import 'package:eco_taksi/config/api_config.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'api_service.dart';
@@ -380,6 +382,15 @@ class AuthService {
         'success': false,
         'error': 'Ошибка сети: $e',
       };
+    }
+  }
+
+  static Future<void> deleteAccount() async {
+    try {
+     await ApiService.instance.deleteAccount();
+    } catch (e) {
+      print('❌ Exception getting weekly results: $e');
+      rethrow;
     }
   }
 }

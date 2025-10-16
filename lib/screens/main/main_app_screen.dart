@@ -115,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _acceptOrder(OrderModel order) async {
     try {
-      await _orderService.acceptOrder(order.id, _currentDriverId!);
+      // await _orderService.acceptOrder(order.id, _currentDriverId!);
       if (mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -137,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _declineOrder(OrderModel order) async {
     try {
-      await _orderService.cancelOrder(order.id, _currentDriverId!);
+      // await _orderService.cancelOrder(order.id, _currentDriverId!);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

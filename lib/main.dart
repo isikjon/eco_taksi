@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:dgis_mobile_sdk_full/dgis.dart' as sdk;
 import 'services/auth_service.dart';
@@ -12,7 +14,13 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    sdkContext = sdk.DGis.initialize();
+    final iosKey  = const sdk.KeyFromAsset('dgissdk_ios.key');
+    final androidKey  = const sdk.KeyFromAsset('dgissdk.key');
+
+    final key =  sdk.KeySource.fromAsset(Platform.isAndroid ? androidKey : iosKey);
+
+
+    sdkContext = sdk.DGis.initialize(keySource: key);
     await LocationService().initialize();
   } catch (e) {
     print('Ошибка инициализации: $e');
