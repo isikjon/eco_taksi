@@ -7,6 +7,7 @@ import 'services/location_service.dart';
 import 'styles/app_theme.dart';
 import 'screens/auth/phone_auth_screen.dart';
 import 'screens/main/simple_main_screen.dart';
+import 'screens/location_permission_screen.dart';
 
 late sdk.Context sdkContext;
 
@@ -19,11 +20,9 @@ void main() async {
 
     final key =  sdk.KeySource.fromAsset(Platform.isAndroid ? androidKey : iosKey);
 
-
     sdkContext = sdk.DGis.initialize(keySource: key);
-    await LocationService().initialize();
   } catch (e) {
-    print('Ошибка инициализации: $e');
+    print('Ошибка инициализации SDK: $e');
   }
   
   runApp(const TaxiApp());
@@ -37,7 +36,9 @@ class TaxiApp extends StatelessWidget {
     return MaterialApp(
       title: 'Eco Такси',
       theme: AppTheme.lightTheme,
-      home: const AuthWrapper(),
+      home: const LocationPermissionScreen(
+        nextScreen: AuthWrapper(),
+      ),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -58,7 +59,17 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   void initState() {
     super.initState();
-    _checkAuthStatus();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    try {
+      await LocationService().initialize();
+    } catch (e) {
+      print('Ошибка инициализации LocationService: $e');
+    }
+    
+    await _checkAuthStatus();
   }
 
   Future<void> _checkAuthStatus() async {
