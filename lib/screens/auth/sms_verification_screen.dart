@@ -168,22 +168,46 @@ class _SmsVerificationScreenState extends State<SmsVerificationScreen> {
   void _sendSmsCode() async {
     try {
       final fullPhoneNumber = '+996${widget.phoneNumber}';
+      
+      print('📱 [SMS] Отправка SMS на номер: $fullPhoneNumber');
+      print('📱 [SMS] Длина номера (без +): ${widget.phoneNumber.length}');
+      
+      if (widget.phoneNumber.length != 9) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Неверный формат номера. Должно быть 9 цифр после +996'),
+              backgroundColor: AppColors.error,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
+      
       final response = await ApiService.instance.sendSmsCode(fullPhoneNumber);
       
+      print('📱 [SMS] Ответ сервера: $response');
+      
       if (!response['success'] && mounted) {
+        String errorMessage = response['error'] ?? 'Ошибка отправки SMS';
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(response['error'] ?? 'Ошибка отправки SMS'),
+            content: Text(errorMessage),
             backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
     } catch (e) {
+      print('❌ [SMS] Ошибка: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Ошибка отправки SMS: $e'),
             backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 5),
           ),
         );
       }

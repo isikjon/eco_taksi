@@ -97,13 +97,23 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   void _continue() {
     if (_phoneController.text.isEmpty) return;
     
+    if (_phoneController.text.length != 9) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Введите полный номер телефона (9 цифр)'),
+          backgroundColor: AppColors.error,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+    
     setState(() {
       _isLoading = true;
     });
 
     Future.delayed(const Duration(milliseconds: 500), () async {
       if (mounted) {
-        // Сохраняем номер телефона
         final fullPhoneNumber = '+996${_phoneController.text}';
         await UserDataService.instance.savePhoneNumber(fullPhoneNumber);
         
