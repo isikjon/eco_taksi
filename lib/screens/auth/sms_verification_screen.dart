@@ -170,13 +170,17 @@ class _SmsVerificationScreenState extends State<SmsVerificationScreen> {
       final fullPhoneNumber = '+996${widget.phoneNumber}';
       
       print('📱 [SMS] Отправка SMS на номер: $fullPhoneNumber');
-      print('📱 [SMS] Длина номера (без +): ${widget.phoneNumber.length}');
+      print('📱 [SMS] widget.phoneNumber: "${widget.phoneNumber}" (length: ${widget.phoneNumber.length})');
+      print('📱 [SMS] Characters in phoneNumber: ${widget.phoneNumber.split('').map((c) => "'$c'").join(', ')}');
+      print('📱 [SMS] Digits only: "${widget.phoneNumber.replaceAll(RegExp(r'[^\d]'), '')}" (length: ${widget.phoneNumber.replaceAll(RegExp(r'[^\d]'), '').length})');
       
-      if (widget.phoneNumber.length != 9) {
+      final digitsOnly = widget.phoneNumber.replaceAll(RegExp(r'[^\d]'), '');
+      if (digitsOnly.length != 9) {
+        print('❌ [SMS DEBUG] Validation failed: expected 9 digits, got ${digitsOnly.length}');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Неверный формат номера. Должно быть 9 цифр после +996'),
+              content: Text('Неверный формат номера. Должно быть 9 цифр после +996. Получено: ${digitsOnly.length} цифр'),
               backgroundColor: AppColors.error,
               duration: const Duration(seconds: 5),
             ),
@@ -184,6 +188,7 @@ class _SmsVerificationScreenState extends State<SmsVerificationScreen> {
         }
         return;
       }
+      print('✅ [SMS DEBUG] Validation passed: 9 digits found');
       
       final response = await ApiService.instance.sendSmsCode(fullPhoneNumber);
       

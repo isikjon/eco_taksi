@@ -15,8 +15,11 @@ class PhoneNumberFormatter extends TextInputFormatter {
   ) {
     final text = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
     
+    print('🔍 [FORMATTER DEBUG] Input: "${newValue.text}" -> Digits: "$text" (length: ${text.length})');
+    
     // Ограничиваем только 9 цифрами (123 456 789)
     if (text.length > 9) {
+      print('🔍 [FORMATTER DEBUG] Too many digits, returning old value');
       return oldValue;
     }
     
@@ -52,6 +55,8 @@ class PhoneNumberFormatter extends TextInputFormatter {
     if (text.length >= 9) {
       formatted += text.substring(8, 9);
     }
+    
+    print('🔍 [FORMATTER DEBUG] Final formatted: "$formatted" (length: ${formatted.length})');
     
     return newValue.copyWith(
       text: formatted,
@@ -97,16 +102,26 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   void _continue() {
     if (_phoneController.text.isEmpty) return;
     
-    if (_phoneController.text.length != 9) {
+    // Максимальное логирование для отладки
+    final rawText = _phoneController.text;
+    final digitsOnly = rawText.replaceAll(RegExp(r'[^\d]'), '');
+    print('🔍 [PHONE DEBUG] Raw text: "$rawText" (length: ${rawText.length})');
+    print('🔍 [PHONE DEBUG] Digits only: "$digitsOnly" (length: ${digitsOnly.length})');
+    print('🔍 [PHONE DEBUG] Characters: ${rawText.split('').map((c) => "'$c'").join(', ')}');
+    
+    if (digitsOnly.length != 9) {
+      print('❌ [PHONE DEBUG] Validation failed: expected 9 digits, got ${digitsOnly.length}');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Введите полный номер телефона (9 цифр)'),
+          content: Text('Введите полный номер телефона (9 цифр). Получено: ${digitsOnly.length} цифр'),
           backgroundColor: AppColors.error,
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 5),
         ),
       );
       return;
     }
+    
+    print('✅ [PHONE DEBUG] Validation passed: 9 digits found');
     
     setState(() {
       _isLoading = true;
